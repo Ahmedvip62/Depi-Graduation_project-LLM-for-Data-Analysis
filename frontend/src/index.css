@@ -1,0 +1,201 @@
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    background:
+      radial-gradient(900px 500px at 78% -8%, rgba(99,102,241,0.07), transparent 60%),
+      linear-gradient(90deg, rgba(159,170,200,0.022) 1px, transparent 1px),
+      linear-gradient(180deg, rgba(159,170,200,0.016) 1px, transparent 1px),
+      theme('colors.surface.DEFAULT');
+    background-size: auto, 44px 44px, 44px 44px, auto;
+    color: theme('colors.ink.DEFAULT');
+    font-family: theme('fontFamily.sans');
+  }
+
+  *:focus-visible {
+    outline: 2px solid theme('colors.brand.400');
+    outline-offset: 2px;
+    border-radius: 6px;
+  }
+
+  ::selection {
+    background-color: theme('colors.brand.500');
+    color: white;
+  }
+}
+
+/* Reduced motion is not optional: users who request it get instant transitions
+   and no looping/pulse/typing animations — content still appears, just without
+   choreography. Targets every animation + the Tailwind keyframes we defined. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+  .animate-typing,
+  .animate-caret,
+  .animate-pulse-soft,
+  .animate-ping,
+  .animate-spin,
+  .animate-slide {
+    animation: none !important;
+  }
+}
+
+@layer components {
+  .scroll-thin {
+    scrollbar-width: thin;
+    scrollbar-color: theme('colors.surface.hover') transparent;
+  }
+  .scroll-thin::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  .scroll-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .scroll-thin::-webkit-scrollbar-thumb {
+    background-color: theme('colors.surface.hover');
+    border-radius: 9999px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+  .scroll-thin::-webkit-scrollbar-thumb:hover {
+    background-color: theme('colors.ink.ghost');
+  }
+
+  .shimmer {
+    background: linear-gradient(
+      90deg,
+      theme('colors.surface.muted') 25%,
+      theme('colors.surface.hover') 37%,
+      theme('colors.surface.muted') 63%
+    );
+    background-size: 400% 100%;
+  }
+
+  .signal-rail {
+    position: relative;
+  }
+  .signal-rail::before {
+    content: '';
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: 3px;
+    background: linear-gradient(
+      180deg,
+      theme('colors.brand.400'),
+      theme('colors.accent.300') 55%,
+      theme('colors.surface.line')
+    );
+  }
+
+  /* Signature: monospaced data/measurement labels (IBM Plex Mono).
+     ink-muted (not ink-faint) so small uppercase labels clear WCAG AA contrast
+     on tinted panels. */
+  .data-label {
+    @apply font-mono uppercase tracking-wider text-ink-muted;
+    font-feature-settings: 'tnum' 1, 'zero' 1;
+  }
+
+  /* Signature: a hairline rule with measurement ticks, like an instrument scale. */
+  .tick-rule {
+    height: 7px;
+    background-image: repeating-linear-gradient(
+      90deg,
+      theme('colors.surface.line') 0 1px,
+      transparent 1px 13px
+    );
+    -webkit-mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent);
+    mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent);
+  }
+
+  .md {
+    @apply text-[0.9375rem] leading-relaxed text-ink-soft;
+  }
+  .md > *:first-child {
+    margin-top: 0;
+  }
+  .md > *:last-child {
+    margin-bottom: 0;
+  }
+  .md p {
+    @apply my-3;
+  }
+  .md h1 {
+    @apply mt-5 mb-2 font-display text-xl font-semibold text-ink;
+  }
+  .md h2 {
+    @apply mt-5 mb-2 font-display text-lg font-semibold text-ink;
+  }
+  .md h3 {
+    @apply mt-4 mb-1.5 text-sm font-semibold uppercase tracking-wide text-ink;
+  }
+  .md strong {
+    @apply font-semibold text-ink;
+  }
+  .md a {
+    @apply text-brand-200 underline decoration-brand-500 underline-offset-2 hover:text-brand-100;
+  }
+  .md ul {
+    @apply my-3 list-disc space-y-1.5 pl-5 marker:text-brand-300;
+  }
+  .md ol {
+    @apply my-3 list-decimal space-y-1.5 pl-5 marker:text-accent-300;
+  }
+  .md li {
+    @apply pl-1;
+  }
+  .md blockquote {
+    @apply my-3 rounded-lg bg-surface-sunken px-4 py-2 text-ink-muted;
+  }
+  .md code {
+    @apply rounded-md bg-surface-sunken px-1.5 py-0.5 font-mono text-[0.82em] text-brand-100;
+  }
+  .md pre {
+    @apply my-3 overflow-x-auto rounded-xl border border-surface-line bg-surface-sunken p-4 text-[0.82rem] leading-relaxed text-ink-soft scroll-thin;
+  }
+  .md pre code {
+    @apply bg-transparent p-0 text-[0.82rem] text-ink-soft;
+  }
+  .md hr {
+    @apply my-5 border-surface-line;
+  }
+  .md table {
+    @apply my-4 w-full border-collapse overflow-hidden rounded-lg text-sm;
+    display: block;
+    overflow-x: auto;
+  }
+  .md thead {
+    @apply bg-surface-sunken;
+  }
+  .md th {
+    @apply whitespace-nowrap border-b border-surface-line px-3 py-2 text-left font-semibold text-ink;
+  }
+  .md td {
+    @apply border-b border-surface-line/70 px-3 py-2 align-top text-ink-soft;
+  }
+  .md tbody tr:hover {
+    @apply bg-surface-muted/70;
+  }
+}
