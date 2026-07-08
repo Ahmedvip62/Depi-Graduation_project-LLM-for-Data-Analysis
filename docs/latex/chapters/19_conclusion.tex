@@ -1,0 +1,77 @@
+%=============================================================================
+%  19_conclusion.tex  -  Chapter 18: Conclusion
+%=============================================================================
+\chapter{Conclusion}
+\label{ch:conclusion}
+
+Universal Analyst set out to answer a pointed question: can a language model make
+data analysis faster \emph{without} making it less trustworthy? The system's
+answer is a design, not a slogan --- a set of concrete engineering decisions
+that together let the model be genuinely useful while never being the sole
+authority on what the data says.
+
+\section{What was built}
+The project delivers a complete, local-first analytical workspace. A single
+ingestion engine accepts five file formats; a deterministic profiler describes
+the data exactly; a retrieval layer grounds every answer in the user's own file;
+a streaming local model reasons over that grounded context; a validation-first
+visualization engine renders only correct charts; a hybrid prediction pipeline
+blends model reasoning with scikit-learn rigor; and a reporting engine exports
+the whole session as a branded PDF. A thin, accessible React front end presents
+all of this with exact readouts and honest error states.
+
+\section{The through-line}
+One idea runs through every chapter: \emph{the model proposes within a contract;
+deterministic code disposes.} The model selects a chart type, a prediction
+target, an algorithm, or a narrative --- but always inside a schema or a fixed
+menu, and always subject to validation against the real data. Where the model or
+the runtime fails, the system says so. This is what makes the tool an instrument
+rather than a toy: every readout is exact and earned.
+
+\begin{table}[h]
+\centering
+\caption{Objectives revisited.}
+\small
+\begin{tabularx}{\linewidth}{@{}L{5.0cm} C{2.2cm} X@{}}
+\toprule
+\textbf{Objective} & \textbf{Status} & \textbf{Evidence} \\
+\midrule
+Grounded question answering & \textcolor{uaGreen}{\textbf{Met}} & Per-session RAG
+over profile, column, and row chunks. \\
+Local, private inference & \textcolor{uaGreen}{\textbf{Met}} & Gemma\,4 via
+Ollama; no data leaves the runtime. \\
+Trustworthy visualization & \textcolor{uaGreen}{\textbf{Met}} & Schema-constrained
+plans validated by \code{ChartFactory}. \\
+Multi-format ingestion & \textcolor{uaGreen}{\textbf{Met}} & CSV, JSON, Parquet,
+PDF, SQLite. \\
+Actionable outputs & \textcolor{uaGreen}{\textbf{Met}} & Cleaning, prediction, and
+PDF report skills. \\
+Operational honesty & \textcolor{uaGreen}{\textbf{Met}} & The no-fabrication rule,
+enforced end to end. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\section{Reflections}
+Building the system as six coherent, contract-bounded slices proved as important
+as any single feature: it let a team of six develop in parallel with minimal
+conflict, and it mirrored in process the same clarity the software demands of
+itself. The decision to mediate every capability behind one backend --- so that
+grounding, validation, token accounting, and error honesty live in exactly one
+place --- is what keeps the guarantees consistent and the roadmap additive.
+
+\section{Closing}
+Universal Analyst demonstrates that a local large language model, wrapped in the
+right guardrails, can turn a raw dataset into an interrogable, trustworthy
+workspace. It profiles honestly, retrieves faithfully, visualizes only what is
+valid, predicts within bounds, and reports exactly what happened. It is, in the
+end, what it set out to be: an instrument --- measured, grounded, and sharp.
+
+\begin{center}
+\vspace{6pt}
+\begin{tikzpicture}
+  \draw[uaLine,line width=0.8pt] (-3.2,0) -- (-0.6,0);
+  \node[font=\itshape,text=uaSlate] at (0,0) {fin};
+  \draw[uaLine,line width=0.8pt] (0.6,0) -- (3.2,0);
+\end{tikzpicture}
+\end{center}

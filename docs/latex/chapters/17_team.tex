@@ -1,0 +1,92 @@
+%=============================================================================
+%  17_team.tex  -  Chapter 16: Team and Work Split
+%=============================================================================
+\chapter{Team and Work Split}
+\label{ch:team}
+
+Universal Analyst was built by a six-person team. The work was partitioned so
+that each member owns a coherent, self-contained slice of the system --- one
+that can be developed, committed, and reasoned about largely independently ---
+while two well-defined contract files hold the halves together.
+
+\section{The six-way split}
+\begin{table}[h]
+\centering
+\caption{Team members and their areas of ownership.}
+\small
+\renewcommand{\arraystretch}{1.25}
+\begin{tabularx}{\linewidth}{@{}c L{2.4cm} L{2.9cm} X@{}}
+\toprule
+\textbf{\#} & \textbf{Member} & \textbf{Area} & \textbf{Primary responsibility} \\
+\midrule
+1 & Ahmed & Frontend & The entire React application: chat, dashboard, upload,
+chart gallery, sidebar, command palette, hooks, and API client. \\
+2 & Amir & Backend Core \& LLM & FastAPI core, the API layer, shared models, the
+session manager, and the Ollama client. \\
+3 & Shahenda & AI \& RAG & Prompt templates, token counting, and the ChromaDB
+retrieval layer (store, embedder, retriever, context builder) plus the skill
+registry. \\
+4 & Doaa & Data Engineering & Ingestion, chunking, profiling, automated EDA, and
+the cleaning skill with its route. \\
+5 & Maimamoon & Visualization \& Reporting & The Plotly chart factory and types,
+the PDF report skill and narrative, and the visualization route. \\
+6 & Hesham & ML \& DevOps & The prediction skill and route, Docker/compose, the
+Makefile, CI, the setup notebook, and documentation. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\section{Ownership map}
+Figure~\ref{fig:ownership} maps the split onto the architecture from
+Chapter~\ref{ch:arch}, showing how the six areas tile the system with minimal
+overlap.
+
+\begin{figure}[h]
+\centering
+\begin{tikzpicture}[node distance=5mm and 8mm,
+  o/.style={rounded corners=3pt,align=center,font=\footnotesize\bfseries,inner sep=6pt,minimum height=12mm,text width=3.0cm},
+  a/.style={-{Stealth[length=2.4mm]},uaSlate,thick}]
+  \node[o,fill=uaIndigo!14,draw=uaIndigo] (fe) {Ahmed\\\scriptsize Frontend};
+  \node[o,fill=uaGreen!12,draw=uaGreen,below=of fe] (be) {Amir\\\scriptsize Backend + LLM};
+  \node[o,fill=uaAmber!14,draw=uaAmber,left=18mm of be] (data) {Doaa\\\scriptsize Data Eng};
+  \node[o,fill=uaAmber!14,draw=uaAmber,right=18mm of be] (rag) {Shahenda\\\scriptsize AI + RAG};
+  \node[o,fill=uaIndigoD!12,draw=uaIndigoD,below left=10mm and 2mm of be] (viz) {Maimamoon\\\scriptsize Viz + Report};
+  \node[o,fill=uaIndigoD!12,draw=uaIndigoD,below right=10mm and 2mm of be] (ml) {Hesham\\\scriptsize ML + DevOps};
+  \draw[a] (fe) -- (be);
+  \draw[a] (be) -- (data);
+  \draw[a] (be) -- (rag);
+  \draw[a] (be) -- (viz);
+  \draw[a] (be) -- (ml);
+\end{tikzpicture}
+\caption{The ownership map. The backend core sits at the hub; data, AI,
+visualization, and ML radiate out; the front end sits above.}
+\label{fig:ownership}
+\end{figure}
+
+\section{Contract files}
+Two files define the seams between people and are changed only by agreement,
+because a change to either ripples across the split:
+
+\begin{description}[style=nextline,leftmargin=0pt]
+  \item[\textcolor{uaIndigoD}{\code{app/models/schemas.py}} (Amir)]
+    The Pydantic request/response shapes. Every skill and route that crosses the
+    API boundary speaks these types.
+  \item[\textcolor{uaIndigoD}{\code{frontend/src/lib/api.js}} (Ahmed)]
+    The client that calls those endpoints. It is the front-end mirror of the
+    backend's schema contract.
+\end{description}
+
+\section{Collaboration model}
+The split was designed for \emph{parallel, low-conflict} development: because
+each member's files rarely overlap another's, commits can proceed independently
+and merge cleanly. The shared contract files act as the coordination points ---
+when the API shape changes, the two owners align, and everyone else consumes a
+stable interface. This mirrors, at the level of team process, the same principle
+that governs the software: clear boundaries, explicit contracts, and honest
+communication across them.
+
+\begin{uanote}[One system, six coherent slices]
+The partition is not arbitrary. It follows the data as it flows through the
+system --- ingest, retrieve, reason, visualize, predict, report, present --- so
+each member owns a stage of a pipeline rather than a random scattering of files.
+\end{uanote}

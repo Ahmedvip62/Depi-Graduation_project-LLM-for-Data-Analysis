@@ -1,0 +1,93 @@
+%=============================================================================
+%  15_testing.tex  -  Chapter 14: Testing and Quality
+%=============================================================================
+\chapter{Testing and Quality Assurance}
+\label{ch:testing}
+
+Quality is enforced continuously rather than inspected at the end. Every push and
+pull request to \code{main} triggers a two-job pipeline that lints and tests the
+backend and builds the front end, so a change that breaks either half cannot
+merge unnoticed.
+
+\section{Continuous integration}
+The GitHub Actions workflow defines two parallel jobs
+(Figure~\ref{fig:ci}): \code{backend-tests} and \code{frontend-build}.
+
+\begin{figure}[h]
+\centering
+\begin{tikzpicture}[node distance=4mm and 9mm,
+  ev/.style={draw=uaAmber,fill=uaAmber!12,rounded corners=3pt,font=\footnotesize\bfseries,inner sep=6pt},
+  j/.style={draw=uaIndigo,fill=uaIndigo!8,rounded corners=3pt,font=\footnotesize,inner sep=6pt,text width=3.4cm,align=center},
+  st/.style={draw=uaGreen,fill=uaGreen!10,rounded corners=2pt,font=\scriptsize,inner sep=4pt,text width=3.2cm,align=center},
+  a/.style={-{Stealth[length=2.4mm]},uaSlate,thick}]
+  \node[ev] (push) {push / PR to main};
+  \node[j,above right=2mm and 14mm of push] (be) {backend-tests};
+  \node[j,below right=2mm and 14mm of push] (fe) {frontend-build};
+  \node[st,right=of be] (be1) {Ruff lint \\ then pytest + coverage};
+  \node[st,right=of fe] (fe1) {npm install \\ then vite build};
+  \draw[a] (push) -- (be);
+  \draw[a] (push) -- (fe);
+  \draw[a] (be) -- (be1);
+  \draw[a] (fe) -- (fe1);
+\end{tikzpicture}
+\caption{The CI pipeline: backend linting and tests run in parallel with the
+front-end production build.}
+\label{fig:ci}
+\end{figure}
+
+The backend job sets up Python\,3.12 with pip caching, installs requirements,
+lints with \textbf{Ruff}, and runs \textbf{pytest} with coverage. The frontend
+job sets up Node\,20 and runs a full \code{vite build}, ensuring the production
+bundle compiles.
+
+\begin{lstlisting}[style=bash,caption={Backend CI steps.}]
+- name: Lint with Ruff
+  run: ruff check backend/
+- name: Run tests
+  # Ollama is not available in CI; tests mock the LLM clients.
+  run: pytest backend/tests --cov=backend/app --cov-report=xml
+\end{lstlisting}
+
+\section{The test suite}
+The backend ships focused unit tests over the deterministic, high-value core ---
+exactly the parts where correctness is both critical and testable without a live
+model.
+
+\begin{table}[h]
+\centering
+\caption{Backend test modules.}
+\small
+\begin{tabularx}{\linewidth}{@{}L{3.8cm} X@{}}
+\toprule
+\textbf{Module} & \textbf{Focus} \\
+\midrule
+\code{test\_ingestion.py} & Multi-format parsing and the tolerant JSON / PDF /
+SQLite paths. \\
+\code{test\_profiler.py} & Semantic typing, statistics, and JSON-safe value
+handling. \\
+\code{test\_visualization.py} & Chart validation and rendering in the factory. \\
+\code{conftest.py} & Shared fixtures. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\begin{uanote}[Testing around a non-deterministic core]
+Because the LLM is non-deterministic and unavailable in CI, the strategy is to
+test everything \emph{around} it --- ingestion, profiling, chart validation ---
+and to mock the Ollama client where a code path must cross the model boundary.
+The deterministic guarantees are exactly the ones under test.
+\end{uanote}
+
+\section{Linting and formatting}
+Ruff enforces a consistent style with an 88-character line length, configured in
+\code{pyproject.toml} and run both in CI and via \code{make lint} /
+\code{make format}. A uniform style keeps diffs small and reviews focused on
+substance --- important for a six-person team committing in parallel.
+
+\section{Design for testability}
+Several architectural choices exist partly to make testing tractable:
+deterministic profiling isolates measurable behaviour from the model; the chart
+factory's validation is pure input/output; lazy singletons for the embedder and
+Chroma client keep imports side-effect-free so tests can run without downloading
+models or opening a database. The result is a suite that runs quickly and
+deterministically in a headless CI environment.

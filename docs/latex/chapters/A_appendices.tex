@@ -1,0 +1,179 @@
+%=============================================================================
+%  A_appendices.tex  -  Appendices
+%=============================================================================
+\chapter{Appendices}
+\label{ch:appendix}
+
+\section{Environment configuration template}
+\label{app:env}
+The complete configuration template shipped as \code{.env.example}. Copy it to
+\code{.env} and adjust for the target runtime.
+
+\begin{lstlisting}[style=bash,caption={\code{.env.example} (annotated).}]
+# --- Server ---
+HOST=0.0.0.0
+PORT=8000
+ENVIRONMENT=development           # development | production
+
+# --- Ollama (LLM runtime) ---
+OLLAMA_HOST=http://localhost:11434
+# Docker (Ollama on host, backend in container):
+# OLLAMA_HOST=http://host.docker.internal:11434
+
+# --- Models ---
+MODEL_NAME=gemma4:12b             # primary answering model (text + image)
+ROUTER_MODEL_NAME=gemma4:e4b      # fast routing / classification
+EMBEDDING_MODEL=all-MiniLM-L6-v2  # RAG embeddings
+
+# --- RAG ---
+MAX_CONTEXT_TOKENS=6000           # assembled RAG context budget
+
+# --- Vector store (ChromaDB) ---
+CHROMA_PERSIST_DIRECTORY=./chroma_data
+
+# --- CORS ---
+ALLOWED_ORIGINS=http://localhost:5173,http://localhost
+
+# --- Multimodal chat ---
+IMAGE_CHAT_ENABLED=true
+MAX_CHAT_IMAGES=3
+MAX_CHAT_IMAGE_MB=5
+CONTEXT_WINDOW_TOKENS=256000      # front-end token-meter window
+\end{lstlisting}
+
+\section{The chat event protocol}
+\label{app:events}
+The \code{/chat} endpoint streams Server-Sent Events. Each event has a name and a
+JSON \code{data} payload. The front end's \code{useChat} hook switches on the
+event name to update the interface incrementally.
+
+\begin{longtable}{@{}L{2.3cm} L{4.6cm} L{7.4cm}@{}}
+\caption{Chat SSE events, payloads, and UI effect.}\label{tab:sseevents}\\
+\toprule
+\textbf{Event} & \textbf{Payload (illustrative)} & \textbf{UI effect} \\
+\midrule
+\endfirsthead
+\multicolumn{3}{c}{\small\itshape (continued from previous page)}\\
+\toprule
+\textbf{Event} & \textbf{Payload} & \textbf{UI effect} \\
+\midrule
+\endhead
+\midrule
+\multicolumn{3}{r}{\small\itshape (continued on next page)}\\
+\endfoot
+\bottomrule
+\endlastfoot
+\code{skill} & \code{\{skill, reason\}} & Shows the selected skill. \\
+\code{thinking} & \code{\{text\}} & Renders a reasoning affordance. \\
+\code{action} & \code{\{action, detail\}} & Indicates a backend action. \\
+\code{token} & \code{\{token\}} & Appends to the live answer. \\
+\code{chart} & \code{\{spec / figure\}} & Adds a validated dashboard tile. \\
+\code{usage} & \code{\{prompt, completion, total\}} & Updates the token meter. \\
+\code{command} & \code{\{command, args\}} & Switches view / triggers download. \\
+\code{error} & \code{\{message\}} & Displays the real error verbatim. \\
+\code{done} & \code{\{\}} & Marks the turn complete. \\
+\end{longtable}
+
+\section{The chart-type catalogue}
+\label{app:charts}
+The twenty-six members of the \code{ChartType} enumeration, the single source of
+truth for both the plan schema and the factory's validation.
+
+\begin{lstlisting}[style=py,caption={\code{ChartType} enumeration.}]
+BAR, LINE, SCATTER, PIE, HISTOGRAM, HEATMAP, BOX, VIOLIN, STRIP,
+FUNNEL, FUNNEL_AREA, TREEMAP, SUNBURST, ICICLE, WATERFALL, AREA,
+RADAR, DENSITY_HEATMAP, DENSITY_CONTOUR, SCATTER_GEO, CHOROPLETH,
+SCATTER_MATRIX, PARALLEL_COORDINATES, PARALLEL_CATEGORIES,
+SCATTER_3D, GAUGE, TIMELINE
+\end{lstlisting}
+
+\section{Repository structure}
+\label{app:repo}
+\begin{lstlisting}[style=bash,caption={Project layout (abridged).}]
+DEPI_Graduation_Project_LLM_Driven/
+  backend/
+    app/
+      api/            # chat, upload, sessions, clean, predict,
+                      # visualizations, skills, health
+      core/           # ingestion, chunker, profiler, session_manager
+      eda/            # auto_eda
+      llm/            # ollama_client, prompt_templates, token_counter
+      rag/            # store, embedder, retriever, context_builder
+      skills/         # cleaning, prediction, report, report_narrative
+      skills_registry/# markdown skill definitions
+      visualization/  # chart_factory, chart_types, export
+      models/         # schemas, enums
+      config.py, main.py
+    tests/            # test_ingestion, test_profiler, test_visualization
+    Dockerfile, requirements.txt, pyproject.toml
+  frontend/
+    src/
+      components/     # chat, dashboard, upload, charts, sidebar, palette
+      hooks/          # useChat, useSessions, useFileUpload
+      lib/            # api, chartExport, reportDownload, tokenUsage
+    Dockerfile, vite.config.js, tailwind.config.js, nginx.conf
+  scripts/            # setup_ollama.sh, serve_frontend.sh
+  docs/               # api_reference.md, deployment.md, latex/
+  data/samples/       # example datasets
+  main.ipynb          # cloud setup notebook
+  docker-compose.yml, docker-compose.prod.yml, Makefile
+  .env.example
+\end{lstlisting}
+
+\section{Technology summary}
+\label{app:tech}
+\begin{table}[h]
+\centering
+\caption{Complete technology stack.}
+\small
+\begin{tabularx}{\linewidth}{@{}L{3.2cm} X@{}}
+\toprule
+\textbf{Layer} & \textbf{Technology} \\
+\midrule
+Primary LLM & Gemma\,4 12B via Ollama (multimodal). \\
+Router model & Gemma\,4 \code{e4b}. \\
+Embeddings & \code{sentence-transformers} (\code{all-MiniLM-L6-v2}). \\
+Vector store & ChromaDB (persistent, per-session collections). \\
+Backend & FastAPI, Python\,3.12, \code{pydantic-settings}, \code{uvicorn},
+\code{httpx}. \\
+Data & pandas, numpy, pdfplumber. \\
+ML & scikit-learn. \\
+Visualization & Plotly, Kaleido. \\
+Reports & ReportLab. \\
+Frontend & React\,18, Vite, TailwindCSS, react-plotly.js, react-markdown,
+lucide-react. \\
+Infra & Docker Compose (dev + prod/nginx), Makefile, GitHub Actions, Ruff,
+pytest. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\section{Glossary}
+\label{app:glossary}
+\begin{description}[style=nextline,leftmargin=0pt,itemsep=3pt]
+  \item[\textcolor{uaIndigoD}{RAG}] Retrieval-Augmented Generation --- grounding a
+    model's answer in facts retrieved from an external index rather than its
+    weights.
+  \item[\textcolor{uaIndigoD}{Semantic type}] The profiler's inferred role of a
+    column (boolean, datetime, id, continuous, categorical, text), beyond its raw
+    dtype.
+  \item[\textcolor{uaIndigoD}{Chart plan}] A schema-constrained JSON description
+    of a chart emitted by the model and validated before rendering.
+  \item[\textcolor{uaIndigoD}{Skill}] A routed capability (analysis,
+    visualization, cleaning, prediction, report, Q\&A) with Markdown guidance and
+    a Python implementation.
+  \item[\textcolor{uaIndigoD}{No-fabrication rule}] The commitment that the system
+    shows real model output or a real error, never a placeholder.
+  \item[\textcolor{uaIndigoD}{Structured output}] Ollama's mode for forcing
+    JSON- or schema-valid model responses.
+  \item[\textcolor{uaIndigoD}{Session}] One dataset-scoped analytical context,
+    holding the DataFrame, profile, chat history, and generated charts.
+\end{description}
+
+\vfill
+\begin{center}
+\begin{tikzpicture}
+  \node[font=\itshape\small,text=uaSlate]
+    {Universal Analyst \;\textcolor{uaAmber}{\textbullet}\; Technical Documentation \;\textcolor{uaAmber}{\textbullet}\; DEPI Graduation Project};
+\end{tikzpicture}
+\end{center}

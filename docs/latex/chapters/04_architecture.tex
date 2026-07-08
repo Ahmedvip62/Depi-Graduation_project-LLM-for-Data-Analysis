@@ -1,0 +1,175 @@
+%=============================================================================
+%  04_architecture.tex  -  Chapter 3: System Architecture
+%=============================================================================
+\chapter{System Architecture}
+\label{ch:arch}
+
+\section{Overview}
+Universal Analyst is a two-tier application: a React single-page front end and a
+FastAPI backend, with the backend orchestrating a set of AI and data
+subsystems and delegating language generation to a local Ollama runtime. The
+front end never talks to Ollama directly; every capability is mediated by the
+backend so that validation, grounding, and the no-fabrication rule can be
+enforced in one place.
+
+\begin{figure}[h]
+\centering
+\begin{tikzpicture}[node distance=8mm and 12mm]
+  % Frontend
+  \node[ua-fe,text width=3.2cm] (ui) {Frontend\\\footnotesize React + Vite + Tailwind};
+
+  % Backend layer
+  \node[ua-be,below=14mm of ui,text width=3.6cm] (routes) {API Layer (FastAPI)\\\footnotesize /upload /chat /visualize\\/skills /sessions /clean /predict};
+  \node[ua-be,left=of routes,text width=2.3cm] (router) {Intent\\Router};
+  \node[ua-be,right=of routes,text width=2.3cm] (sess) {Session\\Manager};
+
+  % AI/data layer
+  \node[ua-ai,below=16mm of router,text width=2.6cm] (data) {Ingestion\\Profiler\\Auto-EDA};
+  \node[ua-ai,below=16mm of routes,text width=2.6cm] (rag) {RAG\\\footnotesize ChromaDB + MiniLM};
+  \node[ua-ai,below=16mm of sess,text width=2.6cm] (skills) {Skills\\\footnotesize clean/predict/report/viz};
+
+  \node[ua-ai,below=12mm of rag,text width=3.0cm] (llm) {Ollama Client\\\footnotesize Gemma 4 (12B / e4b)};
+
+  % Output layer
+  \node[ua-out,below=12mm of data,text width=2.6cm] (viz) {Plotly\\Chart Factory};
+  \node[ua-out,below=12mm of skills,text width=2.6cm] (pdf) {ReportLab\\+ Kaleido PDF};
+
+  % edges
+  \draw[ua-arrow] (ui) -- node[right,font=\scriptsize,text=uaSlate]{/api/*} (routes);
+  \draw[ua-arrow] (routes) -- (router);
+  \draw[ua-arrow] (routes) -- (sess);
+  \draw[ua-arrow] (router) -- (data);
+  \draw[ua-arrow] (routes) -- (rag);
+  \draw[ua-arrow] (sess) -- (skills);
+  \draw[ua-arrow] (data) -- (rag);
+  \draw[ua-arrow] (rag) -- (llm);
+  \draw[ua-arrow] (skills) -- (llm);
+  \draw[ua-arrow] (skills) -- (viz);
+  \draw[ua-arrow] (skills) -- (pdf);
+  \draw[ua-arrowl] (llm) to[bend left=12] node[left,font=\scriptsize,text=uaAmber]{tokens / plans} (routes);
+
+  % layer labels (anchored to the left-column nodes)
+  \node[font=\scriptsize\bfseries,text=uaIndigo,rotate=90] at ([xshift=-7mm]ui.west) {CLIENT};
+  \node[font=\scriptsize\bfseries,text=uaGreen,rotate=90] at ([xshift=-7mm]router.west) {BACKEND};
+  \node[font=\scriptsize\bfseries,text=uaAmber,rotate=90] at ([xshift=-7mm]data.west) {AI / DATA};
+  \node[font=\scriptsize\bfseries,text=uaIndigoD,rotate=90] at ([xshift=-7mm]viz.west) {OUTPUT};
+\end{tikzpicture}
+\caption{High-level component architecture. The backend is the single point at
+which grounding, validation, and the no-fabrication rule are enforced.}
+\label{fig:arch}
+\end{figure}
+
+\section{Component responsibilities}
+\begin{table}[h]
+\centering
+\caption{Backend packages and their responsibilities.}
+\small
+\begin{tabularx}{\linewidth}{@{}L{3.2cm} X@{}}
+\toprule
+\textbf{Package} & \textbf{Responsibility} \\
+\midrule
+\code{app.api} & HTTP route handlers: chat, upload, sessions, visualizations,
+skills, clean, predict, health. \\
+\code{app.core} & Ingestion, chunking, profiling, and the in-memory session
+manager. \\
+\code{app.eda} & Automated exploratory data analysis over the profile. \\
+\code{app.llm} & Ollama HTTP client, prompt templates, and token counting. \\
+\code{app.rag} & ChromaDB store, sentence-transformers embedder, retriever, and
+context builder. \\
+\code{app.skills} & Cleaning, prediction, report, and report-narrative
+implementations. \\
+\code{app.skills\_registry} & Markdown definitions that steer the model per
+skill. \\
+\code{app.visualization} & Plotly chart factory, chart-type logic, and image
+export. \\
+\code{app.models} & Pydantic schemas and enumerations shared across the app. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\section{Request lifecycle}
+Figure~\ref{fig:lifecycle} traces a full session: an upload that profiles and
+indexes the data, a question that is grounded via retrieval and streamed from
+the model, an optional chart that is validated before rendering, and a report
+export.
+
+\begin{figure}[h]
+\centering
+\begin{tikzpicture}[
+  actor/.style={font=\footnotesize\bfseries,text=uaInk},
+  lifeline/.style={uaLine,thick},
+  msg/.style={-{Stealth[length=2.4mm]},uaSlate,thick,font=\scriptsize},
+  ret/.style={-{Stealth[length=2.4mm]},uaAmber,thick,dashed,font=\scriptsize},
+  x=2.05cm,y=-0.62cm]
+
+  \foreach \i/\name in {0/Analyst,1/{React UI},2/FastAPI,3/{Ingest\,/\,Profiler},4/{RAG},5/{Gemma\,4},6/{Plotly\,/\,PDF}}{
+    \node[actor] (h\i) at (\i,0) {\name};
+    \draw[lifeline] (\i,-0.6) -- (\i,-19.5);
+  }
+
+  \draw[msg] (0,-1.6) -- node[above]{upload} (1,-1.6);
+  \draw[msg] (1,-2.4) -- node[above]{POST /upload} (2,-2.4);
+  \draw[msg] (2,-3.2) -- node[above]{parse + profile + EDA} (3,-3.2);
+  \draw[msg] (3,-4.0) -- node[above]{chunk + embed} (4,-4.0);
+  \draw[ret] (2,-4.9) -- node[below]{session\_id, profile, eda} (1,-4.9);
+
+  \draw[msg] (0,-6.1) -- node[above]{ask question} (1,-6.1);
+  \draw[msg] (1,-6.9) -- node[above]{POST /chat (stream)} (2,-6.9);
+  \draw[msg] (2,-7.7) -- node[above]{retrieve top-k} (4,-7.7);
+  \draw[ret] (4,-8.5) -- node[below]{grounded chunks} (2,-8.5);
+  \draw[msg] (2,-9.3) -- node[above]{prompt (+images?)} (5,-9.3);
+  \draw[ret] (5,-10.1) -- node[below]{thinking / tokens / plan} (2,-10.1);
+
+  \node[font=\scriptsize\itshape,text=uaAmber] at (3.5,-11.0) {alt [chart requested]};
+  \draw[msg] (2,-11.7) -- node[above]{validate plan} (6,-11.7);
+  \draw[ret] (6,-12.5) -- node[below]{chart event} (1,-12.5);
+
+  \draw[ret] (2,-13.6) -- node[below]{tokens / usage / done} (1,-13.6);
+
+  \draw[msg] (0,-14.9) -- node[above]{export report} (1,-14.9);
+  \draw[msg] (1,-15.7) -- node[above]{POST /skills/report} (2,-15.7);
+  \draw[msg] (2,-16.5) -- node[above]{build PDF} (6,-16.5);
+  \draw[ret] (6,-17.3) -- node[below]{download\_report} (1,-17.3);
+\end{tikzpicture}
+\caption{End-to-end request lifecycle, from upload to grounded answer to report
+export. Dashed amber arrows are streamed or returned responses.}
+\label{fig:lifecycle}
+\end{figure}
+
+\section{Routing and paths}
+The backend serves its routes at the root of port \code{8000}. The front end,
+however, always calls paths under \code{/api/*}. In every deployment mode a
+proxy --- the Vite dev server in development, nginx in production, and a small
+forwarding server in the notebook --- rewrites \code{/api/*} onto the backend
+while stripping the \code{/api} prefix. This keeps the front-end code identical
+across environments and avoids hard-coding backend hostnames.
+
+\begin{uanote}[Why a single mediating backend]
+Because grounding (retrieval), validation (chart plans), token accounting, and
+error honesty all live behind one API, the front end can stay thin and the
+guarantees stay consistent. There is exactly one place where a chart can be
+rejected or an error surfaced --- not several.
+\end{uanote}
+
+\section{Deployment topology}
+Three runtime shapes are supported from the same codebase, summarized in
+Table~\ref{tab:topology} and detailed in Chapter~\ref{ch:deploy}.
+
+\begin{table}[h]
+\centering
+\caption{Supported deployment topologies.}
+\label{tab:topology}
+\small
+\begin{tabularx}{\linewidth}{@{}L{2.7cm} L{3.2cm} X@{}}
+\toprule
+\textbf{Mode} & \textbf{Front end} & \textbf{Notes} \\
+\midrule
+Notebook (cloud) & Forwarded Vite dev server & \code{main.ipynb} installs deps,
+pulls the Gemma tags, and starts both services on a GPU box. \\
+Docker (dev) & Vite dev server in a Node image & Bind-mounts source; Ollama runs
+on the host via \code{host.docker.internal}. \\
+Docker (prod) & Built static assets behind nginx & \code{docker-compose.prod.yml}
+serves optimized images. \\
+\bottomrule
+\end{tabularx}
+\end{table}

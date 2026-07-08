@@ -1,0 +1,127 @@
+%=============================================================================
+%  08_skills.tex  -  Chapter 7: The Skill System
+%=============================================================================
+\chapter{The Skill System}
+\label{ch:skills}
+
+A single natural-language composer drives many different behaviours: a question,
+a request for a dashboard, a cleaning operation, a prediction, or a report. The
+skill system is what turns one free-form message into the right pipeline. It
+combines a fast, deterministic router with per-skill Markdown guidance that
+shapes the model's behaviour.
+
+\section{Routing}
+Every incoming chat message is classified into exactly one skill. The router is a
+\emph{local heuristic} --- fast, transparent, and free --- backed by intent
+detectors for the higher-signal cases (dashboards, reports, predictions) and
+falling through to general question answering.
+
+\begin{figure}[h]
+\centering
+\begin{tikzpicture}[node distance=5mm and 16mm,
+  q/.style={draw=uaInk,fill=uaMist,rounded corners=3pt,font=\footnotesize\bfseries,inner sep=6pt},
+  r/.style={diamond,draw=uaIndigo,fill=uaIndigo!10,aspect=1.8,font=\footnotesize\bfseries,inner sep=1pt},
+  s/.style={draw=uaAmber,fill=uaAmber!12,rounded corners=3pt,font=\footnotesize,inner sep=5pt,minimum width=3.1cm},
+  a/.style={-{Stealth[length=2.4mm]},uaSlate,thick,font=\scriptsize}]
+  \node[q] (msg) {User message};
+  \node[r,right=of msg] (rt) {Intent\\router};
+  \node[s,right=26mm of rt] (viz) {Visualization};
+  \node[s,above=of viz] (av) {Analysis + Visual};
+  \node[s,above=of av] (rep) {Report};
+  \node[s,below=of viz] (pred) {Prediction};
+  \node[s,below=of pred] (qa) {General Q\&A};
+
+  \draw[a] (msg) -- (rt);
+  \draw[a] (rt) -- (rep);
+  \draw[a] (rt) -- (av);
+  \draw[a] (rt) -- (viz);
+  \draw[a] (rt) -- (pred);
+  \draw[a] (rt) -- (qa);
+\end{tikzpicture}
+\caption{Intent routing. Higher-signal intents (report, prediction, dashboard)
+are detected first; everything else falls through to grounded Q\&A.}
+\label{fig:router}
+\end{figure}
+
+\begin{lstlisting}[style=py,caption={The heuristic skill selector (\code{\_select\_skill}).}]
+def _select_skill(message: str) -> str:
+    if _is_report_request(message):
+        return SKILL_REPORT
+    if _is_prediction_request(message):
+        return SKILL_PREDICTION
+    if _is_dashboard_request(message):
+        return SKILL_ANALYSIS_WITH_VISUAL
+    # ... visualization vs analysis heuristics ...
+    if <visual intent>:
+        return SKILL_VISUALIZATION
+    return SKILL_GENERAL_QA
+\end{lstlisting}
+
+\section{The skill registry}
+Each skill has a Markdown definition in \code{app/skills\_registry/}. These files
+are not code --- they are \emph{instructions to the model}, loaded at request
+time and injected into the prompt as skill guidelines. Keeping them as editable
+Markdown means the team can tune model behaviour per skill without touching
+Python.
+
+\begin{table}[h]
+\centering
+\caption{Skills, their registry files, and behaviour.}
+\small
+\begin{tabularx}{\linewidth}{@{}L{2.5cm} L{2.6cm} X@{}}
+\toprule
+\textbf{Skill} & \textbf{Registry file} & \textbf{Behaviour} \\
+\midrule
+Analysis & \code{analysis.md} & Grounded statistical analysis over the profile
+and retrieved context. \\
+Visualization & \code{visualization.md} & Plans a strict chart specification
+that is validated and rendered. \\
+Analysis + Visual & \code{analysis.md} + \code{visualization.md} & A dashboard
+request: prose analysis plus one or more charts. \\
+Cleaning & \code{cleaning.md} & Guided cleaning with transparent, listed
+actions. \\
+Prediction & \code{prediction.md} & Target selection, model choice, training,
+evaluation. \\
+Report & \code{report.md} & Assembles the branded PDF report. \\
+General Q\&A & \code{general\_qa.md} & Open questions grounded in retrieval. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\section{Prompt composition}
+The chat handler composes the final prompt from three parts: a base prompt
+(profile summary plus grounded context), the selected skill's guidelines, and a
+turn instruction. Composition is skill-aware. For a visualization turn, the
+model is steered toward emitting a structured chart plan; for prose skills, the
+handler appends an explicit instruction that the model must \emph{not} emit JSON
+or code blocks --- only clean prose --- so the answer renders cleanly in the
+chat surface.
+
+\begin{lstlisting}[style=py,caption={Prose skills forbid code/JSON output to keep answers clean.}]
+return (f"{base_prompt}\n\n## AI SKILL GUIDELINES\n{skill_text}"
+        f"\n\n## TURN INSTRUCTION\n{instruction}\n"
+        "CRITICAL: You MUST NOT output any JSON, code blocks, or python code. "
+        "Output only clean prose. Do not start any markdown code blocks.")
+\end{lstlisting}
+
+\section{Thinking mode}
+For questions that warrant it, the system can request an intermediate
+\emph{thinking} pass, surfaced to the user as a distinct \code{thinking} event
+rather than mixed into the answer. This keeps the visible answer crisp while
+still exposing the model's reasoning for users who want it --- consistent with
+the product's preference for exactness over theatrics.
+
+\section{Skill outputs and UI commands}
+Skills do more than produce text. A dashboard turn emits a \code{command} event
+that switches the interface to the dashboard view and a \code{chart} event for
+each validated figure. A report turn emits a \code{download\_report} command.
+This command channel lets the backend drive the front-end experience without the
+front end having to infer intent from prose --- the routing decision made on the
+server is communicated explicitly to the client.
+
+\begin{uanote}[Registry as a tuning surface]
+Because skill behaviour lives in Markdown, iterating on how the model analyses,
+visualizes, or cleans data is a documentation edit --- reviewable in a pull
+request --- rather than a code change. This cleanly separates \emph{prompt
+engineering} from \emph{application logic}.
+\end{uanote}

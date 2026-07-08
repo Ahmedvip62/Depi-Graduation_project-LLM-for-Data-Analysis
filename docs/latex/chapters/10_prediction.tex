@@ -1,0 +1,120 @@
+%=============================================================================
+%  10_prediction.tex  -  Chapter 9: The Prediction Engine
+%=============================================================================
+\chapter{The Prediction Engine}
+\label{ch:predict}
+
+The prediction skill lets an analyst go beyond description into lightweight
+modelling: ``can this dataset predict X?'' It is a hybrid pipeline --- the
+language model reasons about \emph{what} to model and \emph{which} algorithm to
+use, while scikit-learn does the actual training and evaluation. The model
+advises; deterministic code decides and measures.
+
+\section{Pipeline stages}
+\begin{figure}[h]
+\centering
+\begin{tikzpicture}[node distance=4mm and 7mm,
+  s/.style={draw=uaIndigo,fill=uaIndigo!8,rounded corners=3pt,align=center,
+    font=\footnotesize,inner sep=6pt,minimum height=12mm,text width=2.5cm},
+  a/.style={-{Stealth[length=2.4mm]},uaSlate,thick}]
+  \node[s] (t) {1. Target\\selection\\\scriptsize (LLM + schema)};
+  \node[s,right=of t] (k) {2. Task type\\\scriptsize classif. / regr.};
+  \node[s,right=of k] (m) {3. Model\\choice\\\scriptsize (LLM + schema)};
+  \node[s,right=of m] (p) {4. Preprocess\\\scriptsize impute / encode / scale};
+  \node[s,right=of p] (e) {5. Train +\\evaluate};
+  \draw[a](t)--(k); \draw[a](k)--(m); \draw[a](m)--(p); \draw[a](p)--(e);
+\end{tikzpicture}
+\caption{The five-stage prediction pipeline, blending LLM reasoning (stages 1--3)
+with scikit-learn execution (stages 4--5).}
+\label{fig:predict}
+\end{figure}
+
+\section{Target and task selection}
+The first decision --- which column to predict --- is made by the model, but
+inside a schema. A generated JSON schema constrains the model to choose a
+\code{target\_column} from the real column list, give a \code{reason}, and
+declare the \code{task\_type} as either \code{classification} or
+\code{regression}. Structured output turns this from a free-text guess into a
+validated selection.
+
+\begin{lstlisting}[style=py,caption={The target-selection schema (abridged).}]
+{
+  "target_column": {"type": "string", "enum": columns},
+  "reason": {"type": "string"},
+  "task_type": {"type": "string", "enum": ["classification", "regression"]}
+}  # required: target_column, reason, task_type
+\end{lstlisting}
+
+\section{Model selection}
+Given the task type, a second schema constrains the model to pick an appropriate
+scikit-learn algorithm and its hyperparameters from a curated list. Offering the
+model a fixed menu --- rather than free choice --- guarantees that whatever it
+returns can actually be instantiated and trained.
+
+\begin{table}[h]
+\centering
+\caption{Candidate models offered to the LLM per task type.}
+\small
+\begin{tabularx}{\linewidth}{@{}L{3.0cm} X@{}}
+\toprule
+\textbf{Task} & \textbf{Candidate estimators} \\
+\midrule
+Classification & \code{logistic\_regression}, \code{random\_forest\_classifier},
+\code{gradient\_boosting\_classifier}, \code{decision\_tree\_classifier},
+\code{svm\_classifier}, \code{knn\_classifier} \\
+Regression & \code{linear\_regression}, \code{ridge}, \code{lasso},
+\code{random\_forest\_regressor}, \code{gradient\_boosting\_regressor},
+\code{decision\_tree\_regressor}, \code{svr}, \code{knn\_regressor} \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\section{Preprocessing}
+Before training, the pipeline prepares features deterministically with
+scikit-learn utilities: missing values are imputed (\code{SimpleImputer}),
+categorical features are label-encoded (\code{LabelEncoder}), and numeric
+features are standardized (\code{StandardScaler}). The data is split into train
+and test partitions with \code{train\_test\_split}. None of this touches the
+language model --- it is ordinary, reproducible feature engineering.
+
+\begin{lstlisting}[style=py,caption={The scikit-learn building blocks used by the pipeline.}]
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import LabelEncoder, StandardScaler
+from sklearn.impute import SimpleImputer
+from sklearn.linear_model import LogisticRegression, LinearRegression, Ridge, Lasso
+from sklearn.ensemble import (RandomForestClassifier, RandomForestRegressor,
+                              GradientBoostingClassifier, GradientBoostingRegressor)
+from sklearn.tree import DecisionTreeClassifier, DecisionTreeRegressor
+from sklearn.svm import SVC, SVR
+from sklearn.neighbors import KNeighborsClassifier, KNeighborsRegressor
+\end{lstlisting}
+
+\section{Training and evaluation}
+The chosen estimator is fit on the training partition and evaluated on the held-
+out test set with task-appropriate metrics: accuracy, precision, recall, F1, and
+a classification report for classification; $R^2$ and error metrics for
+regression. The results --- the selected target and its rationale, the chosen
+model, and the metrics --- are streamed back so the user sees not just a number
+but \emph{why} this model was chosen and how well it did.
+
+\begin{table}[h]
+\centering
+\caption{Evaluation metrics by task type.}
+\small
+\begin{tabularx}{\linewidth}{@{}L{3.0cm} X@{}}
+\toprule
+\textbf{Task} & \textbf{Metrics reported} \\
+\midrule
+Classification & Accuracy, precision, recall, F1, and a full classification
+report. \\
+Regression & $R^2$ score and error measures. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\begin{uanote}[Bounded autonomy]
+The model is given real agency --- it selects the target and the algorithm ---
+but only within schemas and a fixed estimator menu. This is the project's
+signature pattern applied to machine learning: \emph{the model proposes within a
+contract; deterministic code disposes and measures.}
+\end{uanote}

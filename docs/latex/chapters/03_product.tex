@@ -1,0 +1,96 @@
+%=============================================================================
+%  03_product.tex  -  Chapter 2: Product Philosophy and Users
+%=============================================================================
+\chapter{Product Philosophy and Users}
+\label{ch:product}
+
+\section{Who it is for}
+Universal Analyst is built for \textbf{data analysts, data-science students, and
+technical operators} who arrive with a concrete dataset and a concrete question.
+Their context is a focused analysis session rather than a long-lived project:
+they upload data, read the profile, ask grounded questions, request a chart or a
+prediction, and export a report. They value \emph{speed}, \emph{density}, and
+\emph{trustworthy output} over decoration, and they are fluent in tools like
+Linear and Stripe --- so standard product affordances should behave exactly as
+they expect.
+
+\begin{table}[h]
+\centering
+\caption{Primary persona and the job the product does for them.}
+\begin{tabularx}{\linewidth}{@{}L{3.4cm} X@{}}
+\toprule
+\textbf{Persona} & \textbf{Job-to-be-done} \\
+\midrule
+Data analyst & ``I have this file and a question --- give me a correct,
+grounded answer and, if it helps, a real chart, without me writing code.'' \\
+DS student & ``Let me explore a dataset's structure, try a quick predictive
+model, and produce a clean report I can hand in.'' \\
+Technical operator & ``Run this locally on our GPU box; nothing about our data
+should leave the machine.'' \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\section{Brand personality}
+The product is deliberately positioned as an \emph{instrument}, not a marketing
+app: precise, technical, and quietly confident. Three words anchor the identity
+--- \textbf{measured, grounded, sharp}. It should feel like a piece of lab
+equipment a professional reaches for, where every readout is exact and earned:
+no hype, no hand-holding, no filler copy.
+
+\section{Design principles}
+The following principles govern both the interface and the backend behaviour.
+They are not aspirational --- each maps to concrete implementation decisions
+described later in this document.
+
+\begin{description}[style=nextline,leftmargin=0pt]
+  \item[\textcolor{uaIndigoD}{Readouts are exact.}]
+    Numbers, counts, and labels render in a monospaced face (IBM Plex Mono) so
+    data reads like instrument output rather than prose. See the front-end
+    typography in Chapter~\ref{ch:frontend}.
+  \item[\textcolor{uaIndigoD}{Earned familiarity.}]
+    Tabs, side navigation, the composer, and tables behave exactly as a
+    Linear/Stripe-fluent user expects, so the tool disappears into the task.
+  \item[\textcolor{uaIndigoD}{No fabrication.}]
+    The UI never substitutes static or placeholder analysis for real model
+    output. Empty and error states say what actually happened --- this is
+    enforced in the streaming chat path (Chapter~\ref{ch:llm}).
+  \item[\textcolor{uaIndigoD}{One signal, one job.}]
+    Indigo carries actions, focus, and identity; amber marks measurement and
+    emphasis only. Neither colour is used to decorate.
+  \item[\textcolor{uaIndigoD}{Density with rhythm.}]
+    The interface is information-dense where the analyst needs it, using
+    deliberate spacing and hairline structure rather than nested cards.
+\end{description}
+
+\begin{uanote}[The no-fabrication rule, concretely]
+When the model or Ollama fails mid-answer, the backend emits a real
+\code{error} event and the front end shows it verbatim. The system never
+back-fills a canned profile summary, a fake chart, or invented statistics to
+paper over a failure. This single rule shapes error handling across every
+subsystem.
+\end{uanote}
+
+\section{Anti-references}
+Part of defining a product is defining what it must \emph{not} become. Universal
+Analyst explicitly rejects:
+
+\begin{itemize}
+  \item The generic AI-SaaS dashboard --- rounded cards everywhere, purple-to-blue
+        gradient accents, a tiny uppercase eyebrow over every section, and
+        hero-metric templates.
+  \item The ``warm cream and terracotta serif'' editorial template (the
+        project's original look, explicitly retired).
+  \item The flat ``near-black plus one acid-green accent'' dark default; the
+        current theme stays differentiated by its indigo/amber duotone and
+        monospaced data signature.
+  \item Any surface that advertises a capability it does not actually have.
+\end{itemize}
+
+\section{Accessibility and inclusion}
+The application ships a dark theme in which body text and labels meet WCAG AA
+contrast (at least \code{4.5:1}, or \code{3:1} for large text). Every
+interactive element has a visible keyboard focus state, all motion has a
+\code{prefers-reduced-motion} fallback, and microphone dictation is an optional
+enhancement --- never the only path to input. Accessibility is treated as a
+correctness property of the interface, not a later polish step.

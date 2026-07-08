@@ -1,0 +1,239 @@
+%=============================================================================
+%  Universal Analyst - Technical Documentation
+%  DEPI Graduation Project - LLM-Driven Data Analysis
+%
+%  Compile on Overleaf (or locally) with pdfLaTeX.  Recommended:
+%      latexmk -pdf main.tex          (runs enough passes for TOC/refs)
+%  or three pdfLaTeX passes.
+%
+%  This is the MASTER file. Chapters live in ./chapters and are pulled in
+%  with \input near the bottom. Fonts, colours, and styling are defined here.
+%=============================================================================
+\documentclass[11pt,a4paper,oneside]{report}
+
+%------------------------------------------------------------------ encoding
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+
+%--------------------------------------------------------------------- fonts
+% Palatino-flavoured text + math: warm, "document" feel, highly readable.
+\usepackage{newpxtext}
+\usepackage{newpxmath}
+\usepackage[scaled=0.85]{beramono} % clean monospace for code
+\linespread{1.06}
+
+%------------------------------------------------------------------- geometry
+\usepackage[a4paper,margin=1in,headheight=15pt,footskip=32pt]{geometry}
+
+%-------------------------------------------------------------------- colours
+\usepackage{xcolor}
+\definecolor{uaIndigo}{RGB}{79,70,229}     % primary action / identity
+\definecolor{uaIndigoD}{RGB}{49,46,129}    % deep indigo
+\definecolor{uaAmber}{RGB}{217,119,6}      % measurement / emphasis
+\definecolor{uaInk}{RGB}{17,24,39}         % near-black body ink
+\definecolor{uaSlate}{RGB}{71,85,105}      % secondary text
+\definecolor{uaMist}{RGB}{241,245,249}     % pale panel fill
+\definecolor{uaLine}{RGB}{203,213,225}     % hairline rules
+\definecolor{uaGreen}{RGB}{16,150,110}     % success / positive
+\definecolor{uaCode}{RGB}{30,41,59}        % code text
+\definecolor{uaCodeBg}{RGB}{248,250,252}   % code background
+\definecolor{uaKw}{RGB}{124,58,237}        % code keyword
+\definecolor{uaStr}{RGB}{5,150,105}        % code string
+\definecolor{uaCom}{RGB}{100,116,139}      % code comment
+
+%------------------------------------------------------------------- graphics
+\usepackage{graphicx}
+\usepackage{tikz}
+\usetikzlibrary{positioning,arrows.meta,calc,shapes.geometric,backgrounds,fit,shadows.blur}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.17}
+
+%---------------------------------------------------------------------- boxes
+\usepackage[most]{tcolorbox}
+
+%----------------------------------------------------------------- tables etc
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{tabularx}
+\usepackage{multirow}
+\usepackage{longtable}
+\usepackage{ragged2e}
+\newcolumntype{L}[1]{>{\RaggedRight\arraybackslash}p{#1}}
+\newcolumntype{C}[1]{>{\Centering\arraybackslash}p{#1}}
+
+%--------------------------------------------------------------------- misc
+\usepackage{enumitem}
+\setlist{itemsep=2pt,topsep=4pt,parsep=0pt}
+\usepackage{fancyhdr}
+\usepackage{titlesec}
+\usepackage{listings}
+\usepackage{caption}
+\captionsetup{font=small,labelfont={bf,color=uaIndigoD},labelsep=period}
+\usepackage[hidelinks]{hyperref}
+\hypersetup{
+  colorlinks=true,
+  linkcolor=uaIndigoD,
+  urlcolor=uaIndigo,
+  citecolor=uaIndigoD,
+  pdftitle={Universal Analyst - Technical Documentation},
+  pdfauthor={DEPI Graduation Team},
+}
+\usepackage{bookmark}
+\usepackage{microtype}
+
+%============================== section styling ==============================
+\titleformat{\chapter}[display]
+  {\normalfont\huge\bfseries\color{uaIndigoD}}
+  {\raisebox{-2pt}{\tikz\node[fill=uaIndigo,text=white,rounded corners=3pt,
+     inner xsep=8pt,inner ysep=4pt,font=\Large\bfseries]{Chapter \thechapter};}}
+  {14pt}
+  {\Huge}
+  [\vspace{4pt}{\color{uaLine}\titlerule[1.2pt]}]
+
+\titlespacing*{\chapter}{0pt}{-18pt}{22pt}
+
+\titleformat{\section}
+  {\normalfont\Large\bfseries\color{uaInk}}
+  {\color{uaAmber}\thesection}{0.7em}{}
+\titleformat{\subsection}
+  {\normalfont\large\bfseries\color{uaSlate}}
+  {\color{uaAmber}\thesubsection}{0.6em}{}
+
+%================================ headers/footers =============================
+\pagestyle{fancy}
+\fancyhf{}
+\renewcommand{\headrulewidth}{0.4pt}
+\renewcommand{\footrulewidth}{0pt}
+\fancyhead[L]{\footnotesize\color{uaSlate}\textsc{Universal Analyst}}
+\fancyhead[R]{\footnotesize\color{uaSlate}\leftmark}
+\fancyfoot[C]{\footnotesize\color{uaSlate}\thepage}
+\fancypagestyle{plain}{\fancyhf{}\fancyfoot[C]{\footnotesize\color{uaSlate}\thepage}\renewcommand{\headrulewidth}{0pt}}
+\renewcommand{\chaptermark}[1]{\markboth{\thechapter.\ #1}{}}
+
+%================================ code listings ==============================
+\lstdefinestyle{ua}{
+  backgroundcolor=\color{uaCodeBg},
+  basicstyle=\ttfamily\footnotesize\color{uaCode},
+  keywordstyle=\color{uaKw}\bfseries,
+  stringstyle=\color{uaStr},
+  commentstyle=\color{uaCom}\itshape,
+  numberstyle=\tiny\color{uaSlate},
+  numbers=left,
+  numbersep=8pt,
+  stepnumber=1,
+  frame=leftline,
+  framerule=1.4pt,
+  rulecolor=\color{uaIndigo},
+  framexleftmargin=6pt,
+  xleftmargin=14pt,
+  breaklines=true,
+  breakatwhitespace=true,
+  showstringspaces=false,
+  tabsize=2,
+  columns=fullflexible,
+  keepspaces=true,
+  aboveskip=10pt,
+  belowskip=8pt,
+}
+\lstset{style=ua}
+
+% Language-flavoured aliases
+\lstdefinestyle{py}{style=ua,language=Python,morekeywords={async,await,self,None,True,False}}
+\lstdefinestyle{js}{style=ua,morekeywords={const,let,var,await,async,export,import,from,return,switch,case,new}}
+\lstdefinestyle{bash}{style=ua,morekeywords={make,npm,pip,git,cd,bash,uvicorn,run,docker,host}}
+\lstdefinestyle{jsonc}{style=ua,morekeywords={true,false,null}}
+
+% Inline code helper: \code{...}
+\newcommand{\code}[1]{{\ttfamily\small\color{uaCode}#1}}
+
+%============================== callout boxes ================================
+\newtcolorbox{uanote}[1][]{
+  enhanced,breakable,
+  colback=uaMist,colframe=uaIndigo,
+  boxrule=0pt,leftrule=3pt,
+  arc=2pt,left=10pt,right=10pt,top=7pt,bottom=7pt,
+  fonttitle=\bfseries\color{uaIndigoD},
+  title={#1}}
+
+\newtcolorbox{uawarn}[1][]{
+  enhanced,breakable,
+  colback=uaCodeBg,colframe=uaAmber,
+  boxrule=0pt,leftrule=3pt,
+  arc=2pt,left=10pt,right=10pt,top=7pt,bottom=7pt,
+  fonttitle=\bfseries\color{uaAmber},
+  title={#1}}
+
+\newtcolorbox{uakey}[1][]{
+  enhanced,breakable,
+  colback=white,colframe=uaLine,
+  boxrule=0.8pt,arc=3pt,
+  left=10pt,right=10pt,top=8pt,bottom=8pt,
+  fonttitle=\bfseries\color{uaIndigoD},
+  title={#1}}
+
+% A compact "feature" chip
+\newcommand{\chip}[1]{\tikz[baseline=(x.base)]\node[fill=uaIndigo!12,draw=uaIndigo!40,
+  rounded corners=2pt,inner xsep=4pt,inner ysep=1.5pt,font=\footnotesize\ttfamily,
+  text=uaIndigoD](x){#1};}
+
+%============================== TikZ block styles ============================
+\tikzset{
+  ua-fe/.style={draw=uaIndigo,fill=uaIndigo!10,rounded corners=4pt,
+    text=uaInk,align=center,font=\small\bfseries,inner sep=7pt,minimum height=13mm},
+  ua-be/.style={draw=uaGreen,fill=uaGreen!10,rounded corners=4pt,
+    text=uaInk,align=center,font=\small\bfseries,inner sep=7pt,minimum height=13mm},
+  ua-ai/.style={draw=uaAmber,fill=uaAmber!12,rounded corners=4pt,
+    text=uaInk,align=center,font=\small\bfseries,inner sep=7pt,minimum height=13mm},
+  ua-out/.style={draw=uaIndigoD,fill=uaIndigoD!10,rounded corners=4pt,
+    text=uaInk,align=center,font=\small\bfseries,inner sep=7pt,minimum height=13mm},
+  ua-arrow/.style={-{Stealth[length=3mm]},uaSlate,thick},
+  ua-arrowl/.style={-{Stealth[length=3mm]},uaAmber,thick,dashed},
+}
+
+%=============================================================================
+\begin{document}
+\hypersetup{pageanchor=false}
+\input{chapters/00_cover}
+\hypersetup{pageanchor=true}
+
+\pagenumbering{roman}
+\input{chapters/01_abstract}
+
+% ---- front matter listings ----
+\clearpage
+\pagestyle{plain}
+\tableofcontents
+\clearpage
+\listoffigures
+\clearpage
+\listoftables
+\clearpage
+\pagestyle{fancy}
+\pagenumbering{arabic}
+\setcounter{page}{1}
+
+% ============================ main matter ============================
+\input{chapters/02_introduction}
+\input{chapters/03_product}
+\input{chapters/04_architecture}
+\input{chapters/05_ingestion}
+\input{chapters/06_rag}
+\input{chapters/07_llm}
+\input{chapters/08_skills}
+\input{chapters/09_visualization}
+\input{chapters/10_prediction}
+\input{chapters/11_reporting}
+\input{chapters/12_frontend}
+\input{chapters/13_api}
+\input{chapters/14_deployment}
+\input{chapters/15_testing}
+\input{chapters/16_security}
+\input{chapters/17_team}
+\input{chapters/18_future}
+\input{chapters/19_conclusion}
+
+% ============================ appendices ============================
+\appendix
+\input{chapters/A_appendices}
+
+\end{document}

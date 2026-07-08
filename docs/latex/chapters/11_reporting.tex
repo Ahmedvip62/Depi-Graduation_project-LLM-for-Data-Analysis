@@ -1,0 +1,114 @@
+%=============================================================================
+%  11_reporting.tex  -  Chapter 10: Cleaning and PDF Reporting
+%=============================================================================
+\chapter{Cleaning and PDF Reporting}
+\label{ch:reporting}
+
+Two skills turn analysis into deliverables: the cleaning skill, which produces a
+tidier dataset with a transparent record of what changed, and the report skill,
+which exports a branded PDF capturing the whole session. Both are held to the
+same honesty standard as the rest of the system.
+
+\section{The cleaning skill}
+The cleaning skill applies guided data-cleaning operations to a session's
+DataFrame and returns a structured \code{CleaningResponse}. Critically, it does
+not clean silently: the response enumerates exactly what happened.
+
+\begin{table}[h]
+\centering
+\caption{Fields of \code{CleaningResponse}.}
+\small
+\begin{tabularx}{\linewidth}{@{}L{3.6cm} X@{}}
+\toprule
+\textbf{Field} & \textbf{Meaning} \\
+\midrule
+\code{original\_rows} / \code{cleaned\_rows} & Row counts before and after. \\
+\code{original\_columns} / \code{cleaned\_columns} & Column counts before and
+after. \\
+\code{actions} & An ordered list of the cleaning operations performed. \\
+\code{explanation} & A human-readable rationale for the changes. \\
+\code{profile} & A fresh \code{DataProfile} of the cleaned data. \\
+\code{preview\_rows} & A sample of the cleaned rows for immediate inspection. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+Because the response includes a fresh profile and a preview, the front end can
+show the effect of cleaning immediately, and the user can decide whether to keep
+the result --- optionally as a new session, via the
+\code{create\_new\_session} flag on the request. Transparency here is the point:
+an analyst must be able to see and justify every transformation applied to their
+data.
+
+\begin{uanote}[Cleaning is auditable]
+Every cleaning run returns the list of actions taken and a before/after profile.
+There is no ``magic tidy'' that changes the data without saying how --- the
+transformation is as inspectable as the analysis.
+\end{uanote}
+
+\section{The report skill}
+The report skill produces a professional, branded PDF using \textbf{ReportLab}.
+It is deliberately designed so that ``the PDF and the app read as one product'':
+the same indigo/amber identity, the same monospaced treatment of numbers, and
+the same restraint.
+
+\subsection{Document structure}
+A report is assembled with ReportLab's \code{platypus} flowable system on A4
+pages. A custom stylesheet defines a coherent hierarchy --- title, subtitle,
+eyebrow, headings, body, muted, and small styles --- so the document has
+deliberate typographic rhythm rather than default styling.
+
+\begin{table}[h]
+\centering
+\caption{Sections composed into the PDF report.}
+\small
+\begin{tabularx}{\linewidth}{@{}L{3.4cm} X@{}}
+\toprule
+\textbf{Section} & \textbf{Content} \\
+\midrule
+Cover / header & Branded title block establishing the report identity. \\
+Data profile & Row/column counts, per-column types, and key statistics. \\
+Quality signals & Missingness, outliers, and other profile-derived signals. \\
+Generated charts & The validated charts produced during the session. \\
+Narrative & A model-written summary from the report-narrative generator. \\
+Transcript & The conversation that produced the analysis. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Embedding real charts}
+The charts in the report are the very same validated figures generated during
+the session --- not re-imagined for print. Plotly figures are rasterized to
+images through \textbf{Kaleido} and embedded into the PDF, so what the analyst
+saw on screen is what appears in the document. This closes the loop: a chart
+that passed validation in the dashboard is the chart that lands in the report.
+
+\subsection{The report narrative}
+A dedicated \code{report\_narrative} generator asks the model for a concise,
+prose summary of the findings, which is embedded as the narrative section. It
+uses the non-streaming \code{generate\_text} path (Chapter~\ref{ch:llm}), so a
+model failure raises rather than silently producing an empty section --- once
+again, no fabrication.
+
+\begin{lstlisting}[style=py,caption={ReportLab flowables used to build the document.}]
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+from reportlab.platypus import (SimpleDocTemplate, Paragraph, Spacer,
+                                Table, TableStyle, Image)
+# A custom stylesheet (title/subtitle/eyebrow/h1/h2/body/muted/small)
+# gives the PDF the same visual identity as the application.
+\end{lstlisting}
+
+\subsection{Robust value formatting}
+Report generation is defensive about the messy reality of real data. Helper
+routines (\code{\_fmt}, \code{\_plain}, \code{\_safe\_text},
+\code{\_inline\_markdown}, \code{\_top\_value\_text}) coerce arbitrary profile
+values into clean, length-bounded strings, strip inline Markdown, and format
+top-value lists --- so a stray \code{NaN}, an over-long category label, or an
+exotic type never breaks the layout.
+
+\section{Delivery}
+The report is requested through \code{POST /skills/report}. In the chat flow, a
+report intent additionally emits a \code{download\_report} command event so the
+front end can trigger the download as part of the conversation, making export
+feel like a natural continuation of the analysis rather than a separate mode.

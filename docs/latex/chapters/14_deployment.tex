@@ -1,0 +1,113 @@
+%=============================================================================
+%  14_deployment.tex  -  Chapter 13: Configuration and Deployment
+%=============================================================================
+\chapter{Configuration and Deployment}
+\label{ch:deploy}
+
+Universal Analyst is designed to run on a cloud GPU box with the language model
+local to the machine, and to be brought up with a single notebook or a single
+\code{make} command. This chapter covers configuration, the three deployment
+shapes, and the developer tooling.
+
+\section{Configuration}
+All settings are read through \code{pydantic-settings} from environment
+variables (or a \code{.env} file), with sensible defaults and alias support so
+the same setting can be spelled several ways. Table~\ref{tab:env} lists the
+important keys; the full template ships as \code{.env.example} and is reproduced
+in Appendix~\ref{app:env}.
+
+\begin{table}[h]
+\centering
+\caption{Principal configuration variables.}
+\label{tab:env}
+\small
+\begin{tabularx}{\linewidth}{@{}L{4.3cm} L{3.0cm} X@{}}
+\toprule
+\textbf{Variable} & \textbf{Default} & \textbf{Purpose} \\
+\midrule
+\code{OLLAMA\_HOST} & \code{localhost:11434} & Ollama runtime URL. \\
+\code{MODEL\_NAME} & \code{gemma4:12b} & Primary answering model. \\
+\code{ROUTER\_MODEL\_NAME} & \code{gemma4:e4b} & Fast routing model. \\
+\code{EMBEDDING\_MODEL} & \code{all-MiniLM-L6-v2} & RAG embeddings. \\
+\code{MAX\_CONTEXT\_TOKENS} & \code{6000} & RAG context budget. \\
+\code{CONTEXT\_WINDOW\_TOKENS} & \code{256000} & Front-end meter window. \\
+\code{IMAGE\_CHAT\_ENABLED} & \code{true} & Multimodal image path. \\
+\code{MAX\_CHAT\_IMAGES} & \code{3} & Images per turn. \\
+\code{MAX\_CHAT\_IMAGE\_MB} & \code{5} & Size per image. \\
+\code{CHROMA\_PERSIST\_DIRECTORY} & \code{./chroma\_data} & Vector-store path. \\
+\code{ALLOWED\_ORIGINS} & \code{localhost:5173,...} & CORS allowlist. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\begin{lstlisting}[style=py,caption={Settings with multi-alias support (\code{app/config.py}).}]
+class Settings(BaseSettings):
+    model_name: str = "gemma4:12b"
+    router_model_name: str = "gemma4:e4b"
+    embedding_model: str = "all-MiniLM-L6-v2"
+    max_context_tokens: int = 6000
+    environment: str = Field(default="development",
+        validation_alias=AliasChoices("ENVIRONMENT", "ENV", "environment", "env"))
+    # ... image limits, chroma dir, allowed_origins ...
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore",
+                                      populate_by_name=True)
+\end{lstlisting}
+
+\section{Cloud notebook setup}
+The primary path for graders and cloud users is \code{main.ipynb}. Running all
+cells installs dependencies idempotently, pulls the required Gemma tags
+(\code{gemma4:12b} and \code{gemma4:e4b}), and starts both services. If a
+required model tag is unavailable, setup \emph{stops with a real error} rather
+than degrading silently --- so the runtime can be fixed directly. The forwarded
+port 5173 serves the app and 8000 exposes the API docs.
+
+\section{Docker Compose}
+Two compose files cover development and production.
+
+\begin{description}[style=nextline,leftmargin=0pt]
+  \item[\textcolor{uaIndigoD}{Development (\code{docker-compose.yml})}]
+    Bind-mounts the backend and frontend source for live reload, runs the Vite
+    dev server directly from a Node image (so hot-module reload and the
+    \code{/api} proxy work out of the box), and reaches an Ollama running on the
+    host via \code{host.docker.internal}.
+  \item[\textcolor{uaIndigoD}{Production (\code{docker-compose.prod.yml})}]
+    Builds optimized images and serves the front end's static assets behind
+    nginx, which also proxies \code{/api} to the backend.
+\end{description}
+
+\begin{lstlisting}[style=bash,caption={Developer entry points via the Makefile.}]
+make up          # dev: backend :8000 + Vite dev server :5173 (Ollama on host)
+make prod-up     # prod: built images behind nginx
+make down        # stop
+make logs        # follow logs
+make test        # backend pytest
+make lint        # ruff check
+make format      # ruff format
+\end{lstlisting}
+
+\section{Container images}
+The backend \code{Dockerfile} builds a Python\,3.12 service image; the frontend
+\code{Dockerfile} builds the production nginx image serving the compiled SPA. The
+Makefile detects Docker Compose v2 (\code{docker compose}) and falls back to the
+legacy v1 binary if only that is present, so the same commands work across
+environments.
+
+\section{Manual startup}
+For a bare host, the sequence is: pull the models
+(\code{scripts/setup\_ollama.sh}), install backend requirements and launch
+\code{uvicorn} on port 8000, then install and run the Vite dev server. Copying
+\code{.env.example} to \code{.env} configures models, the Ollama host, the RAG
+budget, and CORS.
+
+\begin{lstlisting}[style=bash,caption={Manual startup on a bare GPU host.}]
+bash scripts/setup_ollama.sh
+cd backend && pip install -r requirements.txt
+uvicorn app.main:app --host 0.0.0.0 --port 8000
+cd ../frontend && npm install && npm run dev -- --host
+\end{lstlisting}
+
+\begin{uawarn}[Ollama placement matters]
+Under Docker, the backend reaches Ollama on the \emph{host} through
+\code{host.docker.internal}, not \code{localhost}. Getting this wrong is the most
+common local-setup mistake; the environment template documents both forms.
+\end{uawarn}

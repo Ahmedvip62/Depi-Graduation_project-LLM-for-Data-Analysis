@@ -1,0 +1,128 @@
+%=============================================================================
+%  09_visualization.tex  -  Chapter 8: The Visualization Engine
+%=============================================================================
+\chapter{The Visualization Engine}
+\label{ch:viz}
+
+Charts are where a hallucinating assistant does the most damage, so this is
+where Universal Analyst is strictest. The model never draws anything. It emits a
+\emph{plan}; the backend validates that plan against the real schema and only
+then renders a Plotly figure. This chapter covers the chart-type catalogue, the
+plan schema, and the validation-and-render pipeline in \code{ChartFactory}.
+
+\section{A broad chart catalogue}
+The \code{ChartType} enumeration defines the full set of visualizations the
+system understands --- twenty-six types spanning statistical, hierarchical,
+geographic, and multidimensional charts. The enum is the single source of truth:
+the plan schema references it, and the factory validates against it.
+
+\begin{table}[h]
+\centering
+\caption{The \code{ChartType} catalogue (26 types).}
+\small
+\begin{tabularx}{\linewidth}{@{}L{2.6cm} X@{}}
+\toprule
+\textbf{Family} & \textbf{Types} \\
+\midrule
+Comparison & \code{bar}, \code{line}, \code{area}, \code{funnel},
+\code{funnel\_area}, \code{waterfall} \\
+Distribution & \code{histogram}, \code{box}, \code{violin}, \code{strip},
+\code{density\_heatmap}, \code{density\_contour} \\
+Relationship & \code{scatter}, \code{heatmap}, \code{scatter\_matrix},
+\code{scatter\_3d} \\
+Composition & \code{pie}, \code{treemap}, \code{sunburst}, \code{icicle} \\
+Multidimensional & \code{radar}, \code{parallel\_coordinates},
+\code{parallel\_categories} \\
+Geographic & \code{scatter\_geo}, \code{choropleth} \\
+Indicator & \code{gauge}, \code{timeline} \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\section{The chart plan}
+When a visualization is requested, the model is asked to emit a structured chart
+\emph{plan} rather than any drawing code. The plan is constrained by a
+JSON schema generated at request time from the actual column names, so the model
+can only reference columns that exist. Ollama's structured-output mode
+(Chapter~\ref{ch:llm}) is used to force schema-valid output where supported.
+
+\begin{figure}[h]
+\centering
+\begin{tikzpicture}[node distance=6mm and 10mm,
+  b/.style={draw,rounded corners=3pt,align=center,font=\footnotesize,inner sep=6pt,minimum height=11mm},
+  m/.style={b,draw=uaAmber,fill=uaAmber!12},
+  v/.style={b,draw=uaIndigo,fill=uaIndigo!8},
+  ok/.style={b,draw=uaGreen,fill=uaGreen!12},
+  no/.style={b,draw=red!60,fill=red!8},
+  a/.style={-{Stealth[length=2.4mm]},uaSlate,thick,font=\scriptsize}]
+  \node[m] (plan) {Model chart plan\\\scriptsize (JSON, schema-constrained)};
+  \node[v,right=of plan] (norm) {Normalize\\\scriptsize spec};
+  \node[v,right=of norm] (val) {Validate\\\scriptsize type + columns};
+  \node[ok,above right=4mm and 10mm of val] (render) {Render\\Plotly figure};
+  \node[no,below right=4mm and 10mm of val] (reject) {Reject\\\scriptsize (no fabrication)};
+  \draw[a] (plan) -- (norm);
+  \draw[a] (norm) -- (val);
+  \draw[a] (val) -- node[above,font=\scriptsize,text=uaGreen]{valid} (render);
+  \draw[a] (val) -- node[below,font=\scriptsize,text=red!60]{invalid} (reject);
+\end{tikzpicture}
+\caption{The validation-first visualization pipeline. Invalid plans are
+rejected, never silently replaced with a placeholder chart.}
+\label{fig:chartpipe}
+\end{figure}
+
+\section{The chart factory}
+\code{ChartFactory.generate\_chart} takes the DataFrame and a normalized chart
+specification and produces a rendered figure. Before any rendering it performs a
+battery of checks:
+
+\begin{itemize}
+  \item The requested type must be a member of \code{ChartType}.
+  \item Every referenced column must actually exist in the DataFrame
+        (a \code{\_valid} predicate).
+  \item Columns used on numeric axes must genuinely be numeric
+        (a \code{\_is\_numeric} predicate).
+  \item Optional filters are applied through a dedicated \code{\_apply\_filters}
+        step before aggregation.
+\end{itemize}
+
+Only after these pass does the factory aggregate, optionally take a top-$N$
+slice for categorical charts, apply a consistent aesthetic, and hand off to
+Plotly. A plan that references a missing column, or asks for a numeric axis on a
+categorical field, does not produce a degraded chart --- it fails validation.
+
+\begin{lstlisting}[style=py,caption={Validation predicates inside \code{ChartFactory.generate\_chart}.}]
+supported_types = {t.value for t in ChartType}
+# ...
+def _valid(col):
+    return col is not None and col in df.columns
+def _is_numeric(col):
+    return _valid(col) and pd.api.types.is_numeric_dtype(df[col])
+\end{lstlisting}
+
+\section{Consistent aesthetics}
+A single \code{\_apply\_aesthetic} routine styles every figure so that charts
+generated across a session read as one product: shared fonts, restrained
+gridlines, and the indigo/amber signature rather than Plotly's defaults. This is
+the visual analogue of the ``one signal, one job'' principle --- colour carries
+meaning, not decoration.
+
+\section{From plan to dashboard}
+A dashboard request can yield multiple charts. Each validated figure is stored
+on the session (so it can later appear in the PDF report) and streamed to the
+front end as a \code{chart} event, while a \code{command} event switches the UI
+to the dashboard view. Chart titles are extracted from the specification, with a
+sensible fallback, so every tile is labelled.
+
+\begin{uawarn}[Validation is the product]
+It would be easy --- and tempting --- to ``fix up'' a slightly wrong plan or
+fall back to a default chart when validation fails. The system does neither. A
+chart that cannot be built correctly from the real data is not built. This is
+the visualization-layer expression of the no-fabrication rule.
+\end{uawarn}
+
+\section{Direct visualization endpoint}
+Beyond model-driven dashboards, the \code{/visualize} endpoint accepts an
+explicit, already-validated chart specification and returns a rendered figure.
+This gives the front end a deterministic path for user-initiated charts that do
+not require the model at all, reusing the very same factory and therefore the
+very same validation guarantees.

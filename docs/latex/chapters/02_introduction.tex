@@ -1,0 +1,110 @@
+%=============================================================================
+%  02_introduction.tex  -  Chapter 1: Introduction
+%=============================================================================
+\chapter{Introduction}
+\label{ch:intro}
+
+\section{Motivation}
+The last few years have made it trivially easy to \emph{ask a language model a
+question}, and correspondingly easy for that model to answer with fluent,
+confident, and \emph{wrong} numbers. For data analysis this failure mode is
+particularly dangerous: a plausible-looking figure or a neat chart carries an
+authority that a paragraph of prose does not. A tool that ``chats with your
+data'' is only useful if the analyst can trust that what it reports is actually
+\emph{in} the data.
+
+Universal Analyst is built around that trust problem. Rather than treating the
+language model as an oracle, it treats it as a \emph{reasoning engine wrapped in
+guardrails}: the data is profiled deterministically, relevant facts are
+retrieved from a vector index built from the user's own file, and every chart
+the model proposes is validated against the real schema before it is rendered.
+The model plans; the system verifies; the interface never fakes.
+
+\begin{uanote}[The core promise]
+Given a dataset and a question, the analyst gets a correct, grounded answer or a
+real chart --- \emph{fast} --- and can trust that nothing was fabricated. Empty
+states and error states say what actually happened.
+\end{uanote}
+
+\section{Problem Statement}
+Existing ``AI + data'' tools tend to fall into one of three traps:
+
+\begin{enumerate}
+  \item \textbf{Hallucinated analysis.} The model invents statistics or trends
+        that are not supported by the data, because it never actually reads the
+        data --- only a truncated preview or nothing at all.
+  \item \textbf{Cloud dependence.} The dataset is shipped to a third-party API,
+        raising privacy, cost, and reproducibility concerns that are
+        unacceptable for many analysts and organizations.
+  \item \textbf{Decorative dashboards.} Charts are generated from templates that
+        look impressive but are disconnected from the underlying columns, or are
+        silently substituted when the model fails.
+\end{enumerate}
+
+Universal Analyst addresses all three: it grounds answers in retrieval over the
+uploaded data, it runs the model entirely \emph{locally} on the user's GPU
+runtime, and it renders only charts that survive a strict server-side
+validation pass.
+
+\section{Objectives}
+\begin{table}[h]
+\centering
+\caption{Primary project objectives and how they are met.}
+\begin{tabularx}{\linewidth}{@{}L{4.7cm} X@{}}
+\toprule
+\textbf{Objective} & \textbf{Realization in the system} \\
+\midrule
+Grounded question answering & RAG over a per-session ChromaDB index built from
+schema, per-column, and row chunks of the uploaded file. \\
+Local, private inference & Gemma\,4 (12B primary, \code{e4b} router) served via
+Ollama on the same GPU box; no data leaves the runtime. \\
+Trustworthy visualization & The model emits a strict chart \emph{plan}; the
+\code{ChartFactory} validates columns and types before rendering Plotly. \\
+Multi-format ingestion & A single \code{IngestionEngine} handling CSV, JSON,
+Parquet, PDF tables, and SQLite. \\
+Actionable outputs & Skills for cleaning, prediction, and a branded PDF report,
+in addition to chat and dashboards. \\
+Operational honesty & The \emph{no-fabrication rule}: real streamed output or a
+real error, never a placeholder. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\section{Scope}
+This project delivers a complete, runnable full-stack application: a Python
+\code{3.12} FastAPI backend, a React\,18 single-page front end, a retrieval
+layer, a local-LLM integration, a validated visualization engine, a prediction
+pipeline, a PDF reporting engine, container definitions for development and
+production, a one-click cloud-setup notebook, and a continuous-integration
+workflow. It targets a single-analyst, single-session analytical workflow on a
+cloud GPU runtime (for example, Lightning.ai). Multi-tenant scaling, persistent
+user accounts, and a managed database are explicitly out of scope for this
+iteration and are discussed as future work in Chapter~\ref{ch:future}.
+
+\section{Contributions}
+\begin{itemize}
+  \item A \textbf{grounded analytical assistant} that combines deterministic
+        profiling with retrieval-augmented generation over the user's data.
+  \item A \textbf{validated, model-driven visualization pipeline} that turns a
+        constrained LLM chart plan into a real, correct Plotly figure.
+  \item A \textbf{skill-routing architecture} that lets one natural-language
+        interface dispatch to analysis, visualization, cleaning, prediction, and
+        reporting.
+  \item A \textbf{fully local, streaming inference path} with token-level usage
+        accounting and multimodal (image) support.
+  \item A \textbf{reproducible deployment story} spanning a setup notebook,
+        Docker Compose (development and production), and CI.
+\end{itemize}
+
+\section{Document Roadmap}
+Chapter~\ref{ch:product} frames the product philosophy and users.
+Chapter~\ref{ch:arch} presents the end-to-end architecture and request
+lifecycle. Chapters~\ref{ch:ingestion}--\ref{ch:reporting} descend into each
+backend subsystem in the order data flows through it: ingestion and profiling,
+the RAG layer, the LLM client, the skill system, visualization, prediction, and
+reporting. Chapter~\ref{ch:frontend} covers the React front end;
+Chapter~\ref{ch:api} the HTTP surface; Chapter~\ref{ch:deploy} configuration and
+deployment; Chapter~\ref{ch:testing} testing and quality;
+Chapter~\ref{ch:security} security and limitations. The document closes with the
+team split (Chapter~\ref{ch:team}), future work (Chapter~\ref{ch:future}), a
+conclusion, and appendices.

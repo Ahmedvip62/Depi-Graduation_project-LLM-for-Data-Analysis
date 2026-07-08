@@ -1,0 +1,115 @@
+%=============================================================================
+%  13_api.tex  -  Chapter 12: The HTTP API
+%=============================================================================
+\chapter{The HTTP API}
+\label{ch:api}
+
+The backend exposes a compact REST surface. All routes are served at the root of
+port \code{8000} and reached by the front end through the \code{/api} proxy. This
+chapter enumerates the endpoints, groups them by concern, and details the two
+most important flows.
+
+\section{Endpoint catalogue}
+\begin{table}[h]
+\centering
+\caption{Complete endpoint listing, grouped by router tag.}
+\small
+\begin{tabularx}{\linewidth}{@{}l L{3.6cm} X@{}}
+\toprule
+\textbf{Method} & \textbf{Path} & \textbf{Description} \\
+\midrule
+\code{GET} & \code{/health} & Liveness check. \\
+\code{GET} & \code{/capabilities} & Feature metadata (image limits, flags). \\
+\midrule
+\code{POST} & \code{/upload} & Ingest a file; returns \code{session\_id},
+\code{profile}, \code{eda}. \\
+\midrule
+\code{POST} & \code{/chat} & Streamed chat (SSE event protocol). \\
+\midrule
+\code{POST} & \code{/visualize} & Render a Plotly chart from a validated spec. \\
+\midrule
+\code{POST} & \code{/clean} & Guided data cleaning; returns
+\code{CleaningResponse}. \\
+\midrule
+\code{POST} & \code{/predict} & Run the prediction pipeline. \\
+\midrule
+\code{GET} & \code{/sessions} & List sessions with counts. \\
+\code{POST} & \code{/sessions} & Create a session. \\
+\code{GET} & \code{/sessions/\{id\}} & Session details, history, charts. \\
+\code{DELETE} & \code{/sessions/\{id\}} & Delete a session and its collection. \\
+\midrule
+\code{GET} & \code{/skills} & Active skill manifest. \\
+\code{POST} & \code{/skills/report} & Generate a PDF report. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\section{Router composition}
+Routes are assembled from per-concern routers into one \code{api\_router}, each
+tagged for the automatically generated OpenAPI documentation available at
+\code{/docs}. The skills router is mounted under a \code{/skills} prefix; all
+others sit at the root.
+
+\begin{lstlisting}[style=py,caption={Router composition (\code{app/api/router.py}).}]
+api_router.include_router(health.router, tags=["health"])
+api_router.include_router(upload.router, tags=["upload"])
+api_router.include_router(chat.router, tags=["chat"])
+api_router.include_router(visualizations.router, tags=["visualizations"])
+api_router.include_router(sessions.router, tags=["sessions"])
+api_router.include_router(skills_api.router, prefix="/skills", tags=["skills"])
+api_router.include_router(clean.router, tags=["clean"])
+api_router.include_router(predict.router, tags=["prediction"])
+\end{lstlisting}
+
+\section{The upload flow}
+\code{POST /upload} is the entry point of every session. It accepts a
+multipart file, parses it with the \code{IngestionEngine}, profiles it with the
+\code{DataProfiler}, runs auto-EDA, chunks and embeds the data into a new
+ChromaDB collection, and returns a \code{session\_id} together with the profile
+and EDA payloads. From that point on the \code{session\_id} identifies the
+dataset for every subsequent call.
+
+\begin{table}[h]
+\centering
+\caption{\code{/upload} response payload.}
+\small
+\begin{tabularx}{\linewidth}{@{}L{3.0cm} X@{}}
+\toprule
+\textbf{Field} & \textbf{Content} \\
+\midrule
+\code{session\_id} & UUID identifying the new session. \\
+\code{profile} & The full \code{DataProfile} (types, statistics, correlations). \\
+\code{eda} & The automated exploratory-analysis summary. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\section{The chat flow}
+\code{POST /chat} is the richest endpoint. It accepts the session id, the user
+message, optional image attachments, and flags such as thinking mode. It routes
+the message to a skill, builds a grounded prompt, streams the model's output,
+validates and renders any requested charts, accounts for token usage, persists
+the exchange to the session, and emits UI commands --- all as a single SSE
+stream using the event protocol of Table~\ref{tab:events}.
+
+\section{CORS and configuration}
+Cross-origin behaviour is driven by \code{ALLOWED\_ORIGINS}. When a wildcard is
+configured the app switches to an origin-regex policy \emph{without} credentials
+(the specification forbids credentials with a wildcard origin); otherwise it
+allows the listed origins \emph{with} credentials. This detail matters for
+correct, secure browser access across the different deployment topologies.
+
+\begin{lstlisting}[style=py,caption={Credential-safe CORS handling in \code{main.py}.}]
+if "*" in _origins:
+    app.add_middleware(CORSMiddleware, allow_origin_regex=".*",
+        allow_credentials=False, allow_methods=["*"], allow_headers=["*"])
+else:
+    app.add_middleware(CORSMiddleware, allow_origins=_origins,
+        allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
+\end{lstlisting}
+
+\begin{uanote}[Self-documenting API]
+Because the backend is FastAPI, the endpoint catalogue above is also available
+as live, interactive OpenAPI documentation at \code{/docs} --- useful during
+development and for graders exploring the running service.
+\end{uanote}

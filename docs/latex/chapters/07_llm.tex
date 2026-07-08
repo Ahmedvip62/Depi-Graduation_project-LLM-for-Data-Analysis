@@ -1,0 +1,152 @@
+%=============================================================================
+%  07_llm.tex  -  Chapter 6: Local LLM Integration
+%=============================================================================
+\chapter{Local LLM Integration}
+\label{ch:llm}
+
+All language generation happens \emph{locally}, through an Ollama runtime that
+serves the Gemma\,4 family. The backend never depends on a remote API; the model
+runs on the same GPU box as the application. This chapter covers the two-model
+strategy, the streaming client, the event protocol, structured output, and
+multimodal input.
+
+\section{A two-model strategy}
+Universal Analyst uses two model sizes for two different jobs
+(Table~\ref{tab:models}). A large multimodal model answers questions and plans
+charts; a small, fast model performs intent routing and classification, where
+latency matters more than depth.
+
+\begin{table}[h]
+\centering
+\caption{The two configured models.}
+\label{tab:models}
+\small
+\begin{tabularx}{\linewidth}{@{}L{3.4cm} L{2.6cm} X@{}}
+\toprule
+\textbf{Role} & \textbf{Default tag} & \textbf{Used for} \\
+\midrule
+Primary answering & \code{gemma4:12b} & Grounded answers, chart plans, report
+narrative, prediction reasoning; text and images. \\
+Router / classifier & \code{gemma4:e4b} & Fast intent routing and lightweight
+classification. \\
+Embeddings & \code{all-MiniLM-L6-v2} & RAG vectorization (Chapter~\ref{ch:rag}). \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\section{The streaming client}
+The \code{OllamaClient} wraps Ollama's \code{/api/generate} endpoint using
+\code{httpx} with an asynchronous streaming request. Its central method,
+\code{generate\_stream\_events}, yields a sequence of typed event dictionaries as
+the model produces them. A generous timeout (600\,s total, 10\,s connect)
+accommodates cold model loads on a fresh GPU box.
+
+\begin{lstlisting}[style=py,caption={Streaming request construction and per-line event emission.}]
+payload = {"model": self.model, "prompt": prompt, "stream": True}
+if images:
+    payload["images"] = images
+if format is not None:
+    payload["format"] = format         # "json" or a JSON-schema dict
+# ... options: num_predict, temperature ...
+
+async with httpx.AsyncClient(timeout=OLLAMA_TIMEOUT) as client:
+    async with client.stream("POST", f"{self.base_url}/generate", json=payload) as response:
+        if response.is_error:
+            detail = (await response.aread()).decode("utf-8", "replace")[:500]
+            yield {"type": "error", "message": f"Ollama request failed ({response.status_code}): {detail}"}
+            return
+        async for chunk in response.aiter_lines():
+            data = json.loads(chunk)
+            token = data.get("response")
+            if token:
+                yield {"type": "token", "token": token}
+            if data.get("done"):
+                usage = self._usage_from_chunk(data)
+                if usage:
+                    yield {"type": "usage", "usage": usage}
+\end{lstlisting}
+
+\subsection{Honest error propagation}
+The client distinguishes three failure modes and, crucially, \emph{never
+swallows} them: an HTTP error status yields an \code{error} event with the
+status and body excerpt; a mid-stream \code{error} field from Ollama yields an
+\code{error} event and stops; and connection or timeout exceptions yield their
+own explicit messages. This is the enforcement point for the no-fabrication rule
+at the model boundary --- an error becomes a visible error, not a fabricated
+answer.
+
+\begin{lstlisting}[style=py,caption={Connection and timeout errors surface as real events.}]
+except httpx.ConnectError:
+    yield {"type": "error", "message": f"Cannot connect to Ollama at {self.base_url}."}
+except httpx.TimeoutException:
+    yield {"type": "error", "message": "Ollama request timed out."}
+\end{lstlisting}
+
+\subsection{Two consumption modes}
+On top of the event generator the client offers two convenience wrappers.
+\code{generate\_stream} yields plain token strings for conversational callers;
+\code{generate\_text} collects a complete, non-streaming completion and
+\emph{raises} on model error. The latter is used by callers that need the whole
+response at once and want failures as exceptions --- the chart planner, the
+prediction reasoner, and the report narrative generator.
+
+\section{Token accounting}
+Ollama reports \code{prompt\_eval\_count} and \code{eval\_count} in its final
+chunk. The client's \code{\_usage\_from\_chunk} helper normalizes these into a
+\code{usage} record with prompt, completion, and total token counts, and carries
+through timing fields (\code{total\_duration}, \code{eval\_duration}, and
+related) when present. This usage flows to the front end as a \code{usage} event
+so the token meter can display both per-turn and session-level consumption ---
+directly serving the ``readouts are exact'' principle.
+
+\section{The chat event protocol}
+The \code{/chat} endpoint streams Server-Sent Events, each a small typed JSON
+payload. The front end consumes these to render reasoning, tokens, charts, and
+usage as they arrive. Table~\ref{tab:events} enumerates the event types.
+
+\begin{table}[h]
+\centering
+\caption{Streamed chat event types.}
+\label{tab:events}
+\small
+\begin{tabularx}{\linewidth}{@{}L{2.3cm} X@{}}
+\toprule
+\textbf{Event} & \textbf{Meaning} \\
+\midrule
+\code{skill} & Which skill the router selected for this turn. \\
+\code{thinking} & Intermediate reasoning, shown as a distinct UI affordance. \\
+\code{action} & A structured action the backend is taking (e.g. planning a chart). \\
+\code{token} & One streamed token of the answer. \\
+\code{chart} & A validated, rendered chart specification. \\
+\code{usage} & Token-usage record for the turn. \\
+\code{command} & A UI command (e.g. switch to the dashboard, download a report). \\
+\code{error} & A real error message; nothing is fabricated after it. \\
+\code{done} & The turn is complete. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\section{Structured output}
+For tasks that must return machine-parseable data --- chart plans, prediction
+target selection, model choice --- the client forwards Ollama's \code{format}
+field. Passing \code{"json"} requests JSON mode; passing a JSON-schema
+dictionary requests schema-valid output. Because older Ollama builds may ignore
+an unfamiliar schema, callers still parse defensively, but where supported this
+turns free-form generation into a constrained, validatable contract. The schemas
+themselves are examined in Chapters~\ref{ch:viz} and~\ref{ch:predict}.
+
+\section{Multimodal input}
+When image chat is enabled, the front end may attach up to
+\code{MAX\_CHAT\_IMAGES} (default three) images per turn, each capped at
+\code{MAX\_CHAT\_IMAGE\_MB} (default five). Images are stripped of their data-URL
+prefix, validated, and sent to Ollama as base64 strings in the \code{images}
+field, where the Gemma\,4 vision path consumes them alongside the text prompt.
+The capabilities endpoint advertises these limits so the UI can enforce them
+before an upload is ever attempted.
+
+\begin{uanote}[The model plans; the system decides]
+A recurring pattern across the next chapters: the LLM proposes structured
+intent (a chart plan, a target column, a model choice), and deterministic
+backend code validates and executes it. The model's creativity is harnessed
+inside a contract it cannot violate silently.
+\end{uanote}

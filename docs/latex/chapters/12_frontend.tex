@@ -1,0 +1,110 @@
+%=============================================================================
+%  12_frontend.tex  -  Chapter 11: The Front End
+%=============================================================================
+\chapter{The Front End}
+\label{ch:frontend}
+
+The interface is a React\,18 single-page application built with Vite and styled
+with TailwindCSS. It is deliberately thin: all intelligence lives in the
+backend, and the front end's job is to present streamed results faithfully,
+enforce the product's visual discipline, and stay out of the analyst's way.
+
+\section{Application shell}
+The app is organized around four tabs --- \textbf{Profile}, \textbf{Dashboard},
+\textbf{Chat}, and \textbf{Prediction} --- with a session sidebar, a command
+palette, and a chart gallery layered on top. State for the active session,
+profile, EDA, charts, dashboard layout, and composer draft is held at the app
+root and threaded to components.
+
+\begin{lstlisting}[style=js,caption={The four primary views.}]
+const TABS = { PROFILE: 'profile', DASHBOARD: 'dashboard',
+               CHAT: 'chat', PREDICTION: 'prediction' };
+\end{lstlisting}
+
+\begin{table}[h]
+\centering
+\caption{Key front-end components and their roles.}
+\small
+\begin{tabularx}{\linewidth}{@{}L{3.5cm} X@{}}
+\toprule
+\textbf{Component} & \textbf{Role} \\
+\midrule
+\code{FileUpload} & Drag-and-drop intake; posts to \code{/upload}. \\
+\code{DataOverview} & Renders the profile and EDA panels. \\
+\code{ChatInput} / \code{ChatMessage} & Composer (text, images, voice) and
+message rendering. \\
+\code{MessageList} & The streamed conversation. \\
+\code{DashboardGrid} / \code{ChartCard} & Model-generated dashboard tiles. \\
+\code{LazyChartCard} & Defers the heavy Plotly bundle until a chart is shown. \\
+\code{PredictionPanel} & Drives and displays the prediction skill. \\
+\code{SessionSidebar} & Session list and switching. \\
+\code{CommandPalette} & Keyboard-driven actions. \\
+\code{ContextRing} & Visual token-usage meter. \\
+\code{ReportButton} & Triggers PDF export. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\section{Consuming the event stream}
+The \code{useChat} hook is the heart of the client. It issues a \code{fetch} to
+\code{/chat}, reads the response body as a stream, and decodes Server-Sent
+Events incrementally with a \code{TextDecoder}, dispatching on the event name to
+patch the in-progress assistant message. Tokens append live, \code{thinking}
+renders as a distinct affordance, \code{chart} events populate the dashboard,
+\code{usage} updates the meter, and \code{command} events drive view changes.
+
+\begin{lstlisting}[style=js,caption={Incremental SSE decoding in \code{useChat}.}]
+const reader = response.body.getReader();
+const decoder = new TextDecoder();
+// ... read loop ...
+const { done, value } = await reader.read();
+buffer += decoder.decode(value, { stream: true });
+// parse lines: `event: <name>` then `data: <json>`; switch on eventName
+\end{lstlisting}
+
+Two supporting hooks round out data flow: \code{useFileUpload} manages the
+intake request and its progress, and \code{useSessions} lists, selects, and
+deletes sessions against the \code{/sessions} endpoints.
+
+\section{Multimodal and voice input}
+The composer accepts image attachments, enforcing the backend-advertised limits
+(count and size) before send, and base64-encodes them for the multimodal path.
+It also offers optional browser speech-to-text: dictated text is inserted into
+the composer as an \emph{enhancement}, never as the only input path --- honouring
+the accessibility principle from Chapter~\ref{ch:product}.
+
+\section{Performance: lazy Plotly}
+Plotly is by far the heaviest dependency (roughly 3\,MB). The Vite build splits
+it, along with the Markdown renderer and core vendor libraries, into separate
+chunks via \code{manualChunks}, and the \code{LazyChartCard} component defers
+loading the Plotly bundle until a chart actually needs to render. The result is
+that the intake and profile views paint quickly; the visualization cost is paid
+only when the analyst asks for a chart.
+
+\begin{lstlisting}[style=js,caption={Manual chunking keeps the initial bundle small.}]
+manualChunks: {
+  plotly:   ['plotly.js-dist-min', 'react-plotly.js'],
+  markdown: ['react-markdown', 'remark-gfm'],
+  vendor:   ['react', 'react-dom', 'lucide-react'],
+}
+\end{lstlisting}
+
+\section{The \code{/api} proxy}
+The front end always calls \code{/api/*}. In development, Vite's proxy forwards
+those calls to the backend on port 8000 and strips the \code{/api} prefix; the
+built assets use a relative base so the notebook can serve \code{dist/} from any
+sub-path, and in production a reverse proxy maps \code{/api} to the backend. The
+client code is identical in every environment.
+
+\section{Robustness and feedback}
+An \code{ErrorBoundary} contains rendering failures so a single bad chart cannot
+blank the whole app, a \code{Toast} surfaces transient notifications, and a
+\code{LoadingBar} communicates in-flight work. Together with the token meter,
+these give the analyst continuous, honest feedback about what the system is
+doing --- the interface-level counterpart to the backend's no-fabrication rule.
+
+\begin{uanote}[Thin client, exact readouts]
+The front end renders numbers in IBM Plex Mono, defers heavy work, and shows
+real streamed state --- reasoning, tokens, usage, errors --- exactly as the
+backend reports it. It presents the instrument; it does not invent readings.
+\end{uanote}

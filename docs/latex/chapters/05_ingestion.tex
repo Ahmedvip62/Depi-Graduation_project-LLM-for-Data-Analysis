@@ -1,0 +1,184 @@
+%=============================================================================
+%  05_ingestion.tex  -  Chapter 4: Data Ingestion and Profiling
+%=============================================================================
+\chapter{Data Ingestion and Profiling}
+\label{ch:ingestion}
+
+The journey of every dataset begins here. Before the language model sees
+anything, the backend must turn an arbitrary uploaded file into a clean
+\code{pandas.DataFrame}, understand its structure, and describe it in a form that
+is both machine-usable (for retrieval) and human-readable (for the profile
+panel and the report).
+
+\section{The ingestion engine}
+The \code{IngestionEngine} accepts raw bytes plus a filename and dispatches on
+the file extension. Five formats are supported, declared explicitly so that an
+unsupported upload fails with a clear message rather than a stack trace.
+
+\begin{table}[h]
+\centering
+\caption{Supported input formats and their parsing strategy.}
+\begin{tabularx}{\linewidth}{@{}L{2.4cm} L{2.2cm} X@{}}
+\toprule
+\textbf{Format} & \textbf{Extension} & \textbf{Strategy} \\
+\midrule
+CSV & \code{.csv} & \code{pandas.read\_csv} over an in-memory buffer. \\
+JSON & \code{.json} & Tolerant parse: arrays become rows, single objects are
+normalized, NDJSON is a fallback. \\
+Parquet & \code{.parquet} & \code{pandas.read\_parquet} (pyarrow). \\
+PDF & \code{.pdf} & \code{pdfplumber} extracts tables page-by-page. \\
+SQLite & \code{.sqlite}, \code{.db} & \code{sqlite3} reads all tables; the
+largest is used. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\begin{lstlisting}[style=py,caption={Format dispatch in \code{IngestionEngine.parse\_file}.}]
+SUPPORTED_EXTENSIONS = {"csv", "json", "parquet", "pdf", "sqlite", "db"}
+
+class IngestionEngine:
+    @staticmethod
+    def parse_file(file_bytes: bytes, filename: str) -> pd.DataFrame:
+        extension = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+
+        if extension == "csv":
+            try:
+                return pd.read_csv(io.BytesIO(file_bytes))
+            except Exception as exc:
+                raise ValueError(f"Could not read CSV file: {exc}") from exc
+        elif extension == "json":
+            return IngestionEngine._parse_json(file_bytes)
+        elif extension == "parquet":
+            return pd.read_parquet(io.BytesIO(file_bytes))
+        elif extension == "pdf":
+            return IngestionEngine._parse_pdf(file_bytes)
+        elif extension in ("sqlite", "db"):
+            return IngestionEngine._parse_sqlite(file_bytes)
+        else:
+            raise ValueError(
+                f"Unsupported file format: '{extension}'. "
+                f"Supported: {SUPPORTED_EXTENSIONS}")
+\end{lstlisting}
+
+\subsection{Tolerant JSON parsing}
+JSON is the least predictable of the tabular formats. The engine accepts three
+shapes: a top-level array of records (each object becomes a row via
+\code{json\_normalize}), a single object (normalized to one row, or expanded when
+its values are equal-length lists), and newline-delimited JSON (detected as a
+fallback when a strict parse fails). A \code{utf-8-sig} decode transparently
+strips a byte-order mark if present.
+
+\subsection{PDF table extraction}
+For PDF uploads the engine walks every page with \code{pdfplumber} and calls
+\code{extract\_tables}. Header-only or empty tables are skipped; rows whose
+column count does not match the header are filtered out. When multiple tables
+share an identical column set they are concatenated; otherwise the largest table
+is returned. This heuristic favours the single most substantial table in a
+document rather than fragile multi-table stitching.
+
+\subsection{SQLite handling}
+Because \code{sqlite3} requires a file on disk, the engine writes the uploaded
+bytes to a temporary file, enumerates user tables from \code{sqlite\_master},
+reads each into a DataFrame, and returns the one with the most rows. The
+temporary file is always removed in a \code{finally} block, and a corrupt or
+non-database file yields a clear \code{ValueError} rather than a raw driver
+error.
+
+\begin{uawarn}[One table per upload]
+Both the PDF and SQLite paths deliberately reduce a multi-table source to a
+single DataFrame (the largest). This keeps the downstream profile, retrieval
+index, and charts unambiguous. Analysing several tables from one file is noted
+as future work.
+\end{uawarn}
+
+\section{The data profiler}
+Once a DataFrame exists, the \code{DataProfiler} produces a
+\code{DataProfile} --- a structured, JSON-safe description consumed by the
+front-end overview panel, the RAG context, the chart planner, and the PDF
+report. Profiling is entirely deterministic: no model is involved.
+
+\subsection{Semantic typing}
+Beyond the raw pandas dtype, the profiler assigns each column a \emph{semantic
+type}, which is what actually drives chart selection and analysis. The
+classification cascade is:
+
+\begin{enumerate}
+  \item \textbf{boolean} --- a true boolean dtype, or a two-value string column
+        whose tokens are all boolean-like (\code{true/false}, \code{yes/no},
+        \code{y/n}, \code{0/1}, \code{on/off}).
+  \item \textbf{datetime} --- a native datetime dtype, or an object column that
+        parses to a date for more than 80\% of a 200-row sample.
+  \item \textbf{id} --- uniqueness above 0.9 combined with either an
+        ``id''-bearing name or an integer-like dtype.
+  \item \textbf{continuous} --- any other numeric column.
+  \item \textbf{categorical} / \textbf{text} --- object columns split by
+        cardinality against a \code{max(20, 5\% of rows)} threshold.
+\end{enumerate}
+
+\begin{lstlisting}[style=py,caption={Excerpt of the semantic-type cascade in \code{DataProfiler}.}]
+if pd.api.types.is_bool_dtype(series):
+    return "boolean"
+if not pd.api.types.is_numeric_dtype(series) and DataProfiler._looks_boolean(series):
+    return "boolean"
+if pd.api.types.is_datetime64_any_dtype(series):
+    return "datetime"
+# ... object-that-parses -> datetime ...
+uniqueness = (unique_count / row_count) if row_count else 0.0
+name_has_id = "id" in str(name).lower()
+integer_like = pd.api.types.is_integer_dtype(series)
+if uniqueness > 0.9 and (name_has_id or integer_like):
+    return "id"
+if is_numeric:
+    return "continuous"
+\end{lstlisting}
+
+\subsection{Per-column statistics}
+For continuous and id columns the profiler records min, max, mean, median,
+standard deviation, \textbf{skewness}, and an \textbf{IQR-based outlier count}
+(values beyond $Q_1 - 1.5\,\mathrm{IQR}$ or $Q_3 + 1.5\,\mathrm{IQR}$). Datetime
+columns contribute ISO-formatted min/max. Categorical, id, and boolean columns
+record their top five values with counts. Every value passes through a
+\code{\_json\_safe} helper that converts numpy and pandas scalars, timestamps,
+and NaNs into plain JSON primitives --- essential because this profile is
+serialized to the front end and embedded in prompts.
+
+\begin{table}[h]
+\centering
+\caption{Fields captured per column in \code{ColumnProfile}.}
+\small
+\begin{tabularx}{\linewidth}{@{}L{4.2cm} X@{}}
+\toprule
+\textbf{Field} & \textbf{Meaning} \\
+\midrule
+\code{dtype}, \code{semantic\_type} & Raw pandas dtype and inferred role. \\
+\code{null\_count}, \code{missing\_pct} & Absolute and percentage missingness. \\
+\code{unique\_count} & Distinct non-null values. \\
+\code{min/max/mean/median/std} & Summary statistics for numeric columns. \\
+\code{skewness}, \code{outlier\_count} & Distribution shape and IQR outliers. \\
+\code{sample\_values}, \code{top\_values} & Examples and most-frequent values. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Dataset-level signals}
+At the whole-table level the profiler computes overall missingness, an estimated
+in-memory footprint (\code{memory\_usage(deep=True)}), and --- when at least two
+continuous columns exist --- a rounded \textbf{correlation matrix}. It also
+publishes convenience lists of the datetime, numeric, and categorical column
+names, which the chart planner uses to decide which visualizations are even
+possible.
+
+\section{Automated EDA}
+Layered on top of the profile, \code{generate\_auto\_eda} assembles a compact
+exploratory summary --- human-readable size figures, de-duplicated column
+groupings, and headline observations --- that seeds both the overview panel and
+the opening context the model receives. Because it is derived from the
+deterministic profile, the EDA carries the same trust guarantee: it reflects the
+data, not the model's guesswork.
+
+\begin{uanote}[Why deterministic profiling matters]
+Everything the model later says about the data is anchored to this profile. By
+computing types, statistics, and correlations \emph{without} the LLM, the system
+guarantees a stable, reproducible factual base --- the model interprets, it does
+not measure.
+\end{uanote}

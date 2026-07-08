@@ -1,0 +1,84 @@
+%=============================================================================
+%  16_security.tex  -  Chapter 15: Security, Privacy, and Limitations
+%=============================================================================
+\chapter{Security, Privacy, and Limitations}
+\label{ch:security}
+
+A tool that ingests arbitrary files and runs a language model deserves an honest
+account of its security posture and its boundaries. This chapter states what the
+system protects, what it deliberately does not yet do, and the known limitations
+a user should keep in mind.
+
+\section{Privacy by locality}
+The strongest privacy property is architectural: the language model and the
+embedding model both run \emph{locally} on the user's GPU runtime. Uploaded data
+is parsed, profiled, embedded, and reasoned over without leaving the machine. No
+dataset, prompt, or generated artifact is sent to a third-party API. For
+analysts handling sensitive data, this is often the deciding factor over
+cloud-hosted assistants.
+
+\begin{table}[h]
+\centering
+\caption{Where data lives during a session.}
+\small
+\begin{tabularx}{\linewidth}{@{}L{3.6cm} X@{}}
+\toprule
+\textbf{Artifact} & \textbf{Location} \\
+\midrule
+Uploaded DataFrame & In-memory, per session. \\
+Embeddings & Local ChromaDB collection (\code{CHROMA\_PERSIST\_DIRECTORY}). \\
+Model inference & Local Ollama runtime. \\
+Generated charts / report & Produced and served locally. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\section{Input handling}
+Untrusted files are treated defensively. Each parser is wrapped so that a
+malformed CSV, JSON, PDF, or SQLite file raises a clear \code{ValueError} rather
+than crashing the request; the SQLite path writes to a temporary file that is
+always cleaned up in a \code{finally} block; and image attachments are validated
+against count and size limits before being forwarded to the model. Cross-origin
+access is constrained by the CORS allowlist, with a credential-safe fallback for
+wildcard origins.
+
+\section{Secrets and configuration}
+Configuration is environment-driven and the repository's \code{.gitignore}
+excludes \code{.env} while tracking \code{.env.example}. Secrets therefore live
+outside the codebase by design.
+
+\begin{uawarn}[Operational reminder]
+Because the app runs unauthenticated on a trusted runtime, the GPU box itself is
+the security boundary. Expose the forwarded ports only to trusted networks, and
+never commit a real \code{.env}. Treat any credential that has appeared in an
+untracked history as compromised and rotate it.
+\end{uawarn}
+
+\section{Current limitations}
+In the spirit of the no-fabrication rule, the system's boundaries are stated
+plainly:
+
+\begin{itemize}
+  \item \textbf{Single-table analysis.} PDF and SQLite uploads are reduced to the
+        largest table; multi-table joins are not yet supported.
+  \item \textbf{Bounded row sampling.} Very large datasets are represented by an
+        evenly-spaced row sample (capped at 200 row-chunks) plus full schema and
+        column summaries; extreme datasets are approximated, not exhaustively
+        embedded.
+  \item \textbf{In-memory sessions.} Sessions live in process memory; a backend
+        restart clears them. There is no persistent user account or database.
+  \item \textbf{Single-tenant assumption.} The design targets one analyst on one
+        runtime, without authentication or multi-user isolation beyond
+        per-session collections.
+  \item \textbf{Model dependence.} Answer and chart quality depend on the local
+        Gemma\,4 model; a weaker model or a missing tag degrades capability, and
+        the system reports such failures rather than masking them.
+\end{itemize}
+
+\section{Threats considered out of scope}
+Authentication, authorization, rate limiting, and multi-tenant data isolation are
+intentionally out of scope for this iteration, consistent with the single-analyst
+deployment model. They are natural next steps and are discussed in
+Chapter~\ref{ch:future}. Being explicit about this prevents the interface from
+implying protections it does not provide --- itself an application of the
+product's honesty principle.

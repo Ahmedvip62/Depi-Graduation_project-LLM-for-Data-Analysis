@@ -1,0 +1,71 @@
+%=============================================================================
+%  18_future.tex  -  Chapter 17: Future Work
+%=============================================================================
+\chapter{Future Work}
+\label{ch:future}
+
+Universal Analyst is a complete, working system, but its single-analyst,
+single-session design leaves clear and deliberate room to grow. The roadmap
+below follows naturally from the limitations stated in
+Chapter~\ref{ch:security}, ordered roughly by impact.
+
+\section{Persistence and accounts}
+Sessions currently live in process memory. A persistent store --- a database for
+session metadata and chat history, and durable storage for uploaded data and
+generated reports --- would let analysts return to prior work, and would be the
+foundation for user accounts and authentication.
+
+\section{Multi-table and relational analysis}
+Today a PDF or SQLite upload is reduced to its largest table. A natural extension
+is first-class support for multiple related tables: retaining every table,
+letting the analyst (or the model) express joins, and grounding answers across a
+small relational schema rather than a single flat frame.
+
+\section{Scaling the retrieval layer}
+The bounded row-sampling strategy trades completeness for responsiveness at
+upload time. Moving embedding to a background task with progress reporting would
+allow exhaustive indexing of large datasets without blocking the request, and
+approximate-nearest-neighbour tuning could keep retrieval fast at scale.
+
+\section{Multi-tenancy and security hardening}
+Authentication, authorization, per-user data isolation, and rate limiting would
+turn the single-tenant tool into a shared service. Given the local-first
+architecture, this can be added at the API boundary without disturbing the
+grounding and validation core.
+
+\section{Richer analytical skills}
+The skill system is designed for extension. Candidate additions include
+time-series forecasting, anomaly detection, automated feature engineering, and a
+statistical-testing skill --- each following the established pattern of the model
+proposing within a schema and deterministic code executing and measuring.
+
+\section{Model flexibility}
+The two-model strategy is configuration-driven, so supporting additional local
+models --- or letting the operator choose per-task models --- is largely a matter
+of configuration and light adaptation. A model-capability probe could tune
+behaviour (for example, structured-output support) to whatever model is
+installed.
+
+\begin{table}[h]
+\centering
+\caption{Roadmap summary.}
+\small
+\begin{tabularx}{\linewidth}{@{}L{4.6cm} L{2.4cm} X@{}}
+\toprule
+\textbf{Initiative} & \textbf{Horizon} & \textbf{Primary benefit} \\
+\midrule
+Persistence \& accounts & Near & Return to prior work; foundation for users. \\
+Multi-table analysis & Near & Real relational grounding. \\
+Background indexing & Medium & Exhaustive retrieval at scale. \\
+Multi-tenancy \& auth & Medium & Shared, secure deployment. \\
+New analytical skills & Ongoing & Broader analytical coverage. \\
+Model flexibility & Ongoing & Portability across local models. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\begin{uanote}[Growth without compromising the core]
+Every item above can be added \emph{around} the grounding-and-validation core
+rather than through it. The architectural decision to mediate everything behind
+one backend is what keeps the roadmap additive instead of disruptive.
+\end{uanote}

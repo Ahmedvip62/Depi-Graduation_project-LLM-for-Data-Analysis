@@ -1,0 +1,90 @@
+%=============================================================================
+%  00_cover.tex  -  Full-bleed cover page
+%=============================================================================
+\begin{titlepage}
+\thispagestyle{empty}
+\begin{tikzpicture}[remember picture, overlay]
+
+  % ---- background ----
+  \fill[uaInk] (current page.south west) rectangle (current page.north east);
+
+  % ---- soft indigo glow (top-right) ----
+  \begin{scope}
+    \clip (current page.south west) rectangle (current page.north east);
+    \fill[uaIndigo,opacity=0.16] ([xshift=4cm,yshift=3cm]current page.north east) circle (7cm);
+    \fill[uaAmber,opacity=0.10] ([xshift=-3cm,yshift=-4cm]current page.south west) circle (6cm);
+  \end{scope}
+
+  % ---- top hairline + eyebrow ----
+  \draw[uaAmber,line width=1.2pt]
+     ([xshift=1in,yshift=-1.25in]current page.north west) --
+     ([xshift=-1in,yshift=-1.25in]current page.north east);
+  \node[anchor=west,text=uaAmber,font=\sffamily\bfseries\large]
+     at ([xshift=1in,yshift=-1.05in]current page.north west)
+     {DEPI \; GRADUATION \; PROJECT};
+  \node[anchor=east,text=white!70,font=\sffamily\small]
+     at ([xshift=-1in,yshift=-1.05in]current page.north east)
+     {LLM for Data Analysis};
+
+  % ---- emblem: concentric arcs + data->model->insight nodes ----
+  \begin{scope}[shift={([yshift=-3.7in]current page.north)}]
+    \foreach \r/\o in {2.15/0.22, 1.7/0.32, 1.25/0.5} {
+      \draw[uaIndigo,opacity=\o,line width=1.1pt] (0,0) circle (\r);
+    }
+    \draw[uaAmber,line width=1.4pt,opacity=0.9] (0,0) circle (0.8);
+    \node[circle,fill=uaAmber,inner sep=2.1pt] at (150:0.8) {};
+    \node[circle,fill=white,inner sep=1.6pt] at (30:1.25) {};
+    \node[circle,fill=uaIndigo,inner sep=2.1pt] at (-90:1.7) {};
+    \node[text=white!85,font=\ttfamily\scriptsize] at (0,0) {analyst};
+  \end{scope}
+
+  % ---- title block ----
+  \node[anchor=north,text=white,font=\sffamily\bfseries\fontsize{52}{56}\selectfont]
+     at ([yshift=-5.1in]current page.north) {Universal Analyst};
+  \node[anchor=north,text=uaIndigo!85,font=\sffamily\bfseries\Large]
+     at ([yshift=-5.95in]current page.north) {An LLM-Driven Data Analysis Workspace};
+  \node[anchor=north,text=white!62,font=\itshape\large,align=center,text width=13cm]
+     at ([yshift=-6.5in]current page.north)
+     {Upload a dataset. Interrogate it in natural language. Get grounded answers,\\
+      model-generated dashboards, and a professional PDF report --- powered by a\\
+      \emph{local} multimodal large language model.};
+
+  % ---- tech ribbon ----
+  \node[anchor=north,font=\ttfamily\small,text=white!80,align=center,text width=15cm]
+     at ([yshift=-7.7in]current page.north)
+     {\colorbox{uaIndigo!25}{\strut\ FastAPI\ }\;
+      \colorbox{uaIndigo!25}{\strut\ React + Vite\ }\;
+      \colorbox{uaAmber!30}{\strut\ Ollama - Gemma\,4\ }\;
+      \colorbox{uaIndigo!25}{\strut\ ChromaDB\ }\;
+      \colorbox{uaAmber!30}{\strut\ Plotly\ }};
+
+  % ---- bottom plate ----
+  \fill[white,opacity=0.04]
+     ([xshift=1in,yshift=1.05in]current page.south west) rectangle
+     ([xshift=-1in,yshift=2.25in]current page.south east);
+  \draw[uaIndigo,opacity=0.5,line width=0.8pt]
+     ([xshift=1in,yshift=2.25in]current page.south west) --
+     ([xshift=-1in,yshift=2.25in]current page.south east);
+
+  \node[anchor=north west,text=white!60,font=\sffamily\footnotesize\bfseries]
+     at ([xshift=1.15in,yshift=2.05in]current page.south west) {PROJECT TEAM};
+  \node[anchor=north west,text=white!85,font=\small,align=left]
+     at ([xshift=1.15in,yshift=1.78in]current page.south west)
+     {Ahmed \;\textbf{\textcolor{white!55}{--}}\; Frontend \\
+      Amir \;\textbf{\textcolor{white!55}{--}}\; Backend Core \& LLM \\
+      Shahenda \;\textbf{\textcolor{white!55}{--}}\; AI \& RAG};
+  \node[anchor=north west,text=white!85,font=\small,align=left]
+     at ([xshift=4.7in,yshift=1.78in]current page.south west)
+     {Doaa \;\textbf{\textcolor{white!55}{--}}\; Data Engineering \\
+      Maimamoon \;\textbf{\textcolor{white!55}{--}}\; Visualization \& Reporting \\
+      Hesham \;\textbf{\textcolor{white!55}{--}}\; ML \& DevOps};
+
+  \node[anchor=south west,text=white!45,font=\ttfamily\scriptsize]
+     at ([xshift=1in,yshift=0.6in]current page.south west)
+     {Technical Documentation \textbullet\ Version 1.0};
+  \node[anchor=south east,text=white!45,font=\ttfamily\scriptsize]
+     at ([xshift=-1in,yshift=0.6in]current page.south east)
+     {github.com/Ahmedvip62/Depi-Graduation\_project};
+
+\end{tikzpicture}
+\end{titlepage}

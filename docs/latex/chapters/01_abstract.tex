@@ -1,0 +1,60 @@
+%=============================================================================
+%  01_abstract.tex  -  Abstract + document conventions (roman-numbered)
+%=============================================================================
+\chapter*{Abstract}
+\addcontentsline{toc}{chapter}{Abstract}
+\markboth{Abstract}{}
+
+\begin{tcolorbox}[enhanced,colback=uaMist,colframe=uaIndigo,boxrule=0pt,leftrule=4pt,
+  arc=2pt,left=14pt,right=14pt,top=12pt,bottom=12pt]
+\setlength{\parindent}{0pt}
+\textbf{\large\color{uaIndigoD}Universal Analyst} is a self-hosted, LLM-driven
+workspace that turns any uploaded dataset into an interrogable analytical
+instrument. A user uploads a file --- CSV, JSON, Parquet, a PDF containing
+tables, or a SQLite database --- and the system automatically \emph{profiles}
+the data, runs \emph{exploratory data analysis}, and builds a
+\emph{retrieval-augmented} context so that a \emph{local} multimodal large
+language model (Gemma\,4, served through Ollama) can answer questions that are
+grounded in the actual data rather than in the model's parametric memory.
+\end{tcolorbox}
+
+\vspace{6pt}
+The platform goes beyond conversational question answering. Through a
+router-driven \textbf{skill system}, the same session can request a
+model-planned and server-\emph{validated} interactive dashboard, run a
+lightweight \textbf{predictive-modeling} pipeline built on scikit-learn, perform
+guided data \textbf{cleaning}, or export a branded, professional \textbf{PDF
+report} containing the profile, quality signals, generated charts, and the full
+conversation transcript. A central design commitment --- the \emph{no-fabrication
+rule} --- ensures the interface never substitutes placeholder analysis for real
+model output; when the model or the runtime fails, the system reports precisely
+what happened.
+
+This document describes the complete system: its motivation and product
+philosophy, the end-to-end architecture, and each subsystem in depth ---
+ingestion, profiling, chunking, the ChromaDB retrieval layer, the streaming
+Ollama client, the six analytical skills, the Plotly chart-validation engine,
+the scikit-learn prediction pipeline, the ReportLab PDF generator, the React
+front end, the HTTP API surface, containerized deployment, testing, and
+security posture. It closes with the team's six-way work split, a roadmap, and
+appendices covering configuration and the event protocol.
+
+\vspace{10pt}
+\begin{center}
+\begin{tikzpicture}
+  \node[font=\itshape\large,text=uaSlate] {measured \;\textcolor{uaAmber}{\textbullet}\; grounded \;\textcolor{uaAmber}{\textbullet}\; sharp};
+\end{tikzpicture}
+\end{center}
+
+\vfill
+\subsection*{\color{uaIndigoD}Document Conventions}
+\begin{itemize}
+  \item \code{Inline monospace} denotes code identifiers, file names, endpoints,
+        and configuration keys.
+  \item Full code listings are drawn from the project's actual source and are
+        line-numbered with an indigo margin rule.
+  \item \textbf{Blue callouts} highlight design rationale; \textbf{amber
+        callouts} flag constraints, caveats, and operational warnings.
+  \item Figures render as vector diagrams; every figure and table is listed in
+        the front matter.
+\end{itemize}

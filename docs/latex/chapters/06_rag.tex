@@ -1,0 +1,174 @@
+%=============================================================================
+%  06_rag.tex  -  Chapter 5: Retrieval-Augmented Generation
+%=============================================================================
+\chapter{The Retrieval-Augmented Generation Layer}
+\label{ch:rag}
+
+Grounding is what separates Universal Analyst from a chatbot that merely
+\emph{sounds} authoritative. When the user asks a question, the answer is
+assembled from facts retrieved out of \emph{their} dataset, not recalled from
+the model's weights. This chapter describes how a DataFrame becomes an
+embeddable, queryable index and how that index is turned into a token-budgeted
+prompt.
+
+\section{Pipeline overview}
+\begin{figure}[h]
+\centering
+\begin{tikzpicture}[node distance=6mm and 9mm,
+  box/.style={draw,rounded corners=3pt,align=center,font=\footnotesize,inner sep=6pt,minimum height=11mm},
+  fe/.style={box,draw=uaAmber,fill=uaAmber!10},
+  be/.style={box,draw=uaIndigo,fill=uaIndigo!8},
+  a/.style={-{Stealth[length=2.6mm]},uaSlate,thick}]
+  \node[fe] (df) {DataFrame};
+  \node[fe,right=of df] (chunk) {TextChunker\\\scriptsize schema + column\\+ row chunks};
+  \node[fe,right=of chunk] (emb) {Embedder\\\scriptsize MiniLM-L6-v2};
+  \node[be,right=of emb] (store) {ChromaStore\\\scriptsize session collection};
+  \node[be,below=12mm of store] (query) {Query\\embedding};
+  \node[be,left=of query] (ret) {Retriever\\\scriptsize top-k};
+  \node[be,left=of ret] (ctx) {ContextBuilder\\\scriptsize token budget};
+  \node[fe,left=of ctx] (prompt) {Grounded\\prompt};
+
+  \draw[a] (df) -- (chunk);
+  \draw[a] (chunk) -- (emb);
+  \draw[a] (emb) -- (store);
+  \draw[a] (store) -- (query);
+  \draw[a] (query) -- (ret);
+  \draw[a] (ret) -- (ctx);
+  \draw[a] (ctx) -- (prompt);
+  \node[font=\scriptsize\bfseries,text=uaAmber] at ([yshift=5mm]$(df)!0.5!(store)$) {INDEXING (at upload)};
+  \node[font=\scriptsize\bfseries,text=uaIndigo] at ([yshift=-5mm]$(prompt)!0.5!(query)$) {RETRIEVAL (per question)};
+\end{tikzpicture}
+\caption{The RAG pipeline. Indexing happens once at upload; retrieval and
+context assembly happen on every question.}
+\label{fig:rag}
+\end{figure}
+
+\section{Chunking strategies}
+A DataFrame is not directly embeddable --- it must be turned into text. The
+\code{TextChunker} offers several strategies and a \code{combined} mode that is
+the workhorse for grounding:
+
+\begin{description}[style=nextline,leftmargin=0pt]
+  \item[\textcolor{uaIndigoD}{Schema chunk}] A single chunk describing the whole
+    table: row and column counts, and for each column its dtype and number of
+    unique values.
+  \item[\textcolor{uaIndigoD}{Per-column summary chunks}] One chunk per column
+    with descriptive statistics for numeric columns, or the top five values for
+    categorical ones, plus null counts.
+  \item[\textcolor{uaIndigoD}{Row chunks}] CSV blocks of up to ten rows each,
+    capturing the actual records.
+\end{description}
+
+\subsection{Bounded, representative row sampling}
+A naive row-chunking of a large file would produce tens of thousands of chunks,
+all embedded synchronously during the upload request --- a reliable way to hang
+or exhaust memory. The chunker therefore enforces a hard cap
+(\code{MAX\_ROW\_CHUNKS = 200}). When the dataset would exceed it, the chunker
+takes an \emph{evenly-spaced} sample across the whole table rather than only its
+head, so the embedded rows still represent the dataset end-to-end.
+
+\begin{lstlisting}[style=py,caption={Bounded, evenly-spaced row sampling.}]
+total_chunks = (len(df) + max_rows - 1) // max_rows
+if total_chunks <= max_chunks:
+    source = df
+else:
+    # Evenly-spaced rows covering the whole dataset, not just its head.
+    step = max(max_rows * (total_chunks // max_chunks), max_rows)
+    source = df.iloc[::step].head(max_chunks * max_rows)
+\end{lstlisting}
+
+\begin{uanote}[Schema and column chunks are always complete]
+Only \emph{row} chunks are sampled. The schema chunk and every per-column
+summary are always produced in full, because those are the chunks most useful
+for grounding factual answers about structure and distributions.
+\end{uanote}
+
+\section{Embeddings}
+Chunks are embedded with a \code{sentence-transformers} model,
+\code{all-MiniLM-L6-v2} by default, which maps each chunk to a 384-dimensional
+vector. The model is loaded \emph{lazily} on first use --- a module-level
+singleton --- so that importing the RAG package never triggers a multi-hundred
+megabyte download or occupies GPU memory before any data is uploaded.
+
+\begin{lstlisting}[style=py,caption={Lazy singleton loading of the embedding model.}]
+_model = None
+def _get_model():
+    global _model
+    if _model is None:
+        from sentence_transformers import SentenceTransformer
+        from app.config import settings
+        _model = SentenceTransformer(settings.embedding_model)
+    return _model
+\end{lstlisting}
+
+\section{The vector store}
+Vectors are persisted in \textbf{ChromaDB} using a \code{PersistentClient}. Each
+analysis session gets its own collection, named \code{session\_\{id\}}, so that
+retrieval is naturally isolated per dataset and a session can be deleted
+cleanly. Like the embedder, the Chroma client is created lazily on first use and
+reused thereafter.
+
+\begin{lstlisting}[style=py,caption={Per-session collections in \code{ChromaStore}.}]
+class ChromaStore:
+    def get_or_create_collection(self, session_id: str):
+        client = _get_chroma_client()
+        return client.get_or_create_collection(name=f"session_{session_id}")
+
+    def add_chunks(self, session_id, chunks, embeddings):
+        collection = self.get_or_create_collection(session_id)
+        ids = [f"chunk_{i}" for i in range(len(chunks))]
+        collection.add(documents=chunks, embeddings=embeddings, ids=ids)
+\end{lstlisting}
+
+When a session is deleted, the session manager also removes the corresponding
+Chroma collection --- and does so \emph{outside} its internal lock, because
+network or disk I/O should never block other sessions.
+
+\section{Retrieval}
+On each question the \code{Retriever} embeds the query and asks the session
+collection for the top-$k$ (default five) most similar chunks. It guards
+carefully against the empty case: if the collection has no documents --- for
+example, a session created before any upload --- it returns an empty list rather
+than erroring, and the number of results requested is clamped to the collection
+size.
+
+\begin{lstlisting}[style=py,caption={Guarded top-k retrieval.}]
+collection = store.get_or_create_collection(session_id)
+if collection.count() == 0:
+    return []
+query_embedding = emb.embed_texts([query])[0]
+results = collection.query(
+    query_embeddings=[query_embedding],
+    n_results=min(top_k, collection.count()))
+\end{lstlisting}
+
+\section{Context assembly and the token budget}
+Retrieved chunks are not blindly concatenated. The \code{ContextBuilder} owns a
+token budget (\code{MAX\_CONTEXT\_TOKENS}, 6000 by default) and spends it
+deliberately: it first reserves room for the profile summary, the user's query,
+and a fixed margin for the system prompt and the response, then admits retrieved
+chunks one at a time until the remaining budget is exhausted.
+
+\begin{lstlisting}[style=py,caption={Token-budgeted context assembly.}]
+profile_text = build_profile_summary(profile)
+budget = MAX_CONTEXT_TOKENS - count_tokens(profile_text) - count_tokens(query) - 200
+trimmed_chunks, used = [], 0
+for chunk in chunks:
+    t = count_tokens(chunk)
+    if used + t > budget:
+        break
+    trimmed_chunks.append(chunk); used += t
+context_str = "\n---\n".join(trimmed_chunks)
+return build_data_qa_prompt(query, context_str, profile)
+\end{lstlisting}
+
+The result is a single prompt that always contains the deterministic profile
+summary and as many relevant, retrieved chunks as the budget allows --- the
+raw material from which a grounded answer can be generated.
+
+\begin{uanote}[Grounding is structural, not stylistic]
+The model is not merely \emph{asked} to be faithful; it is \emph{given} the
+facts. The profile summary and retrieved chunks are the only data-bearing parts
+of the prompt, so a faithful answer is the path of least resistance and an
+invented one stands out.
+\end{uanote}
