@@ -1,0 +1,45 @@
+# Production compose: built images, no bind-mounts.
+# Backend (FastAPI) on :8000, frontend (nginx serving the built SPA) on :80.
+# nginx also reverse-proxies /api/ -> backend:8000 (see frontend/nginx.conf).
+# Ollama is expected to run on the HOST (reachable via host.docker.internal).
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: universal-analyst-backend:prod
+    restart: always
+    environment:
+      - ENVIRONMENT=production
+      - OLLAMA_HOST=${OLLAMA_HOST:-http://host.docker.internal:11434}
+      - MODEL_NAME=${MODEL_NAME:-gemma4:12b}
+      - ROUTER_MODEL_NAME=${ROUTER_MODEL_NAME:-gemma4:e4b}
+      - CHROMA_PERSIST_DIRECTORY=/app/chroma_data
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost,http://localhost:80}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "8000:8000"
+    volumes:
+      - chroma_data:/app/chroma_data
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    image: universal-analyst-frontend:prod
+    restart: always
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+
+volumes:
+  chroma_data:
+    driver: local

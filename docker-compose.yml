@@ -1,0 +1,42 @@
+# Development compose: live bind-mounts + Vite dev server.
+# Backend on :8000, frontend (Vite dev) on :5173.
+# Ollama is expected to run on the HOST (reachable via host.docker.internal).
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+      - ./chroma_data:/chroma_data
+      - ./uploads:/tmp/uploads
+    environment:
+      - ENVIRONMENT=development
+      - OLLAMA_HOST=http://host.docker.internal:11434
+      - MODEL_NAME=gemma4:12b
+      - ROUTER_MODEL_NAME=gemma4:e4b
+      - CHROMA_PERSIST_DIRECTORY=/chroma_data
+      - ALLOWED_ORIGINS=http://localhost:5173,http://localhost
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+
+  frontend:
+    # frontend/Dockerfile is the PRODUCTION (nginx) image (used by
+    # docker-compose.prod.yml). For DEV we skip that build and run the Vite dev
+    # server directly from a node image with the source bind-mounted, so HMR
+    # and the Vite /api -> backend proxy work out of the box.
+    image: node:20-alpine
+    working_dir: /usr/src/app
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0 --port 5173"
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/usr/src/app
+      - /usr/src/app/node_modules
+    restart: unless-stopped
+    depends_on:
+      - backend

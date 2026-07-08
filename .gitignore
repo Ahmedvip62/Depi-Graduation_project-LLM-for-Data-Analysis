@@ -1,6 +1,7 @@
 node_modules/
 dist/
 build/
+coverage/
 *.log
 .env
 .env.*
@@ -11,5 +12,12 @@ __pycache__/
 venv/
 chroma_data/
 uploads/
+
+# Editor / tooling
 .idea/
 .vscode/
+.claude/
+.impeccable/
+.pytest_cache/
+.DS_Store
+Thumbs.db
