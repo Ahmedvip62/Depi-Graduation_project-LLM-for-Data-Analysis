@@ -1,0 +1,6 @@
+id,date,product,region,sales,quantity
+1,2026-01-01,Laptop,North,1200.50,1
+2,2026-01-02,Mouse,South,25.99,5
+3,2026-01-03,Keyboard,East,75.00,2
+4,2026-01-04,Monitor,West,300.00,1
+5,2026-01-05,Laptop,East,1200.50,2
