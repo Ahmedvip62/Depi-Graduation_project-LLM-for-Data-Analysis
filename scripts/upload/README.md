@@ -11,9 +11,15 @@ repo, committed under their own GitHub identity, with one double-click.
 
 ## How to run
 
-1. **One person** runs `00_setup.cmd` first. It removes the old unrelated git
-   history, creates a clean repo on `main`, and points it at the graduation repo.
-2. **Each teammate** then double-clicks (or runs from a terminal) their own file:
+**Does ordering matter? No.** You never wait for anyone. Each script uploads only
+*your own* files, so all six can run in any order (even at the same time). The
+only rule: run `00_setup.cmd` on your own machine once, before your upload script.
+
+1. **Each teammate** runs `00_setup.cmd` once on their own copy. It's safe — it
+   does **not** delete your project files. It just connects git to the graduation
+   repo and adopts its current history as the base, so your push is a clean
+   fast-forward instead of a conflict.
+2. **Then** double-click (or run) your own file:
 
    | Script | Owner | Split |
    |--------|-------|-------|
@@ -24,8 +30,14 @@ repo, committed under their own GitHub identity, with one double-click.
    | `05_maimamoon_visualization.cmd` | Maimamoon (maimamoon)| Visualization & Reporting |
    | `06_hesham_ml_devops.cmd`      | Hesham                 | ML Prediction + DevOps + Docs |
 
-   Run them **one at a time** — each script pulls the latest, stages only its own
-   files, commits under the right name/email, and pushes.
+   Each script pulls the latest, stages only its own files, commits under the
+   right name/email, and pushes. If two people push at nearly the same moment,
+   the second just re-runs — the built-in rebase handles it.
+
+> **If a run "does nothing" / the window flashes shut:** you skipped
+> `00_setup.cmd`, so your local copy still had an unrelated git history. Run
+> `00_setup.cmd` first, then your upload script. The scripts now pause at the end
+> so you can read the result.
 
 ## Authentication
 
